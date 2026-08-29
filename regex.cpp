@@ -19,14 +19,12 @@ enum RegexType
 struct regex_node
 {
 	uint8_t type;
-	char *baseComparisonString;
+	char comparisonChar;
 };
 
 struct match_result
 {
 	bool matched;
-	uint32_t matchStart;
-	uint32_t matchedLength;
 };
 
 struct regex_state_machine
@@ -39,20 +37,11 @@ regex_state_machine parseRegex(char *pattern)
 {
 	regex_state_machine stateMachine = {};
 	int patternLength = strLen(pattern);
-	int nodeBaseStringStart = 0;
-	int nodeBaseStringEnd = 0;
-
+	
 	for (int i = 0; i < patternLength; ++i) {
-		++nodeBaseStringEnd;
+		regex_node node = regex_node{RegexType::TYPE_REGULAR_STRING, pattern[i]};
+		stateMachine.regexNodes[stateMachine.numNodes++] = node;
 	}
-	char* cmpStr = new char[nodeBaseStringEnd - nodeBaseStringStart];
-
-	for (; nodeBaseStringStart < nodeBaseStringEnd; ++nodeBaseStringStart) {
-		cmpStr[nodeBaseStringStart] = pattern[nodeBaseStringStart];
-	}
-	cmpStr[nodeBaseStringEnd] = 0;
-	regex_node node = regex_node{RegexType::TYPE_REGULAR_STRING, cmpStr};
-	stateMachine.regexNodes[stateMachine.numNodes++] = node;
 	return stateMachine;
 }
 
@@ -61,25 +50,13 @@ match_result doesNodeMatch(regex_node *regexNode, char *testString) {
 
 	if (regexNode->type == RegexType::TYPE_REGULAR_STRING) {
 		int testStringLength = strLen(testString);
-		int patternLength = strLen(regexNode->baseComparisonString);
 
-		if (testStringLength < patternLength) {
+		if (testStringLength <= 0) {
 			return result;
 		}
 
-		for (int j = 0; j <= (testStringLength - patternLength); ++j) {
-			bool found = true;
-
-			for (int k = 0; k < patternLength && found; ++k) {
-				found = found && (regexNode->baseComparisonString[k] == testString[j + k]);
-			}
-			
-			if (found) {
-				result.matched = true;
-				result.matchStart = j;
-				result.matchedLength = patternLength;
-				break;
-			}
+		if (*testString == regexNode->comparisonChar) {
+			result.matched = true;
 		}
 	}
 	return result;
@@ -87,26 +64,35 @@ match_result doesNodeMatch(regex_node *regexNode, char *testString) {
 
 void processString(char *testString, regex_state_machine *stateMachine)
 {
-	char *testStringRef = testString;
 	int matchStart = 0;
-	int matchEnd = 0;
+	int matchEnd = matchStart;
+	char *testStringRef = testString + matchStart;
 
 	while (*testStringRef) {
-		for (uint32_t i = 0; i < stateMachine->numNodes; ++i) {
+		bool matchedAllNodes = true;
+
+		for (uint32_t i = 0; i < stateMachine->numNodes && matchedAllNodes; ++i) {
 			regex_node currentNode = stateMachine->regexNodes[i];
 			match_result matchResult = doesNodeMatch(&currentNode, testStringRef);
 
 			if (!matchResult.matched) {
-				return;
+				matchedAllNodes = false;
+				++matchStart; // move starting index ahead
+				// reset ref and end index
+				testStringRef = testString + matchStart;
+				matchEnd = matchStart;
+			} else {
+				// move end index and ref ahead
+				++matchEnd;
+				++testStringRef;
 			}
-			// printf("PRE testString: %s, matchStart: %d, matchEnd: %d\n", testStringRef, matchStart, matchEnd);
-			matchStart += matchResult.matchStart;
-			matchEnd = matchStart + matchResult.matchedLength;
-			testStringRef += matchEnd;
-			// printf("POST testString: %s, matchStart: %d, matchEnd: %d\n", testStringRef, matchStart, matchEnd);
 		}
-		printf("matched: '%s' from %d to %d. Leftover string: '%s'\n", testString, matchStart, matchEnd, testStringRef);
+
+		if (matchedAllNodes) {
+			printf("matched: '%s' from %d to %d. Leftover string: '%s'\n", testString, matchStart, matchEnd, testStringRef);			
+		}
 		matchStart = matchEnd;
+		matchedAllNodes = true;
 	}
 }
 
