@@ -1,4 +1,5 @@
-#include <iostream>
+#include <stdio.h>
+#include <cstdint>
 
 int strLen(char *str)
 {
@@ -14,6 +15,27 @@ int strLen(char *str)
 enum RegexType
 {
 	TYPE_REGULAR_CHAR_WITH_LENGTH = 1,
+};
+
+enum ParseCustomLengthState
+{
+	NOT_STARTED,
+	OPENING_BRACKET_GET,
+	FIRST_NUM_START,
+	FIRST_NUM_GET,
+	COMMA_GET,
+	SECOND_NUM_START,
+	SECOND_NUM_GET,
+	CLOSING_BRACKET_GET
+};
+
+struct parse_custom_length_result
+{
+	bool hasError;
+	bool wasMaxInitialized;
+	uint32_t charsConsumed;
+	uint32_t minMatches;
+	uint32_t maxMatches;
 };
 
 struct regex_node
@@ -32,6 +54,7 @@ struct match_result
 
 struct regex_state_machine
 {
+	bool hasError;
 	uint32_t numNodes;
 	regex_node regexNodes[256];
 };
@@ -57,6 +80,129 @@ void printStateMachine(regex_state_machine *stateMachine) {
 	printf("\n-----------------State Machine End-------------------\n");
 }
 
+parse_custom_length_result parseCustomLength(char *pattern, int openingBracketIndex) {
+	parse_custom_length_result result = {};
+	uint8_t parseLengthState = ParseCustomLengthState::NOT_STARTED;
+	char *patternRef = pattern + openingBracketIndex;
+
+	while (*patternRef) {
+		switch (parseLengthState) {
+			case ParseCustomLengthState::NOT_STARTED: {
+				if (*patternRef == '{') {
+					parseLengthState = ParseCustomLengthState::OPENING_BRACKET_GET;
+					++result.charsConsumed;
+					++patternRef;
+				} else {
+					result.hasError = true;
+					printf("No opening bracket found. '%s' at %d\n", pattern, openingBracketIndex);
+					return result;
+				}
+			} break;
+
+			case ParseCustomLengthState::OPENING_BRACKET_GET: {
+				while (*patternRef == ' ') { // skip white spaces
+					++patternRef;
+					++result.charsConsumed;
+				}
+				parseLengthState = ParseCustomLengthState::FIRST_NUM_START;
+			} break;
+
+			case ParseCustomLengthState::FIRST_NUM_START: {
+				char currentChar = *patternRef;
+
+				if (48 <= currentChar && currentChar <= 57) {
+					result.minMatches = 10 * result.minMatches + ((uint8_t)currentChar - 48);
+					++result.charsConsumed;
+					++patternRef;
+				} else if (currentChar == ' ' || currentChar == ',') {
+					parseLengthState = ParseCustomLengthState::FIRST_NUM_GET;
+				} else {
+					result.hasError = true;
+					printf("Expected digit only, got: %c\n", currentChar);
+					return result;
+				}
+			} break;
+
+			case ParseCustomLengthState::FIRST_NUM_GET: {
+				while (*patternRef == ' ') { // skip white spaces
+					++patternRef;
+					++result.charsConsumed;
+				}
+				char currentChar = *patternRef;
+
+				if (currentChar == ',') {
+					parseLengthState = ParseCustomLengthState::COMMA_GET;
+					++patternRef;
+					++result.charsConsumed;
+				} else {
+					result.hasError = true;
+					printf("Expected comma, got: %c\n", currentChar);
+					return result;
+				}
+			} break;
+
+			case ParseCustomLengthState::COMMA_GET: {
+				while (*patternRef == ' ') { // skip white spaces
+					++patternRef;
+					++result.charsConsumed;
+				}
+				parseLengthState = ParseCustomLengthState::SECOND_NUM_START;
+			} break;
+
+			case ParseCustomLengthState::SECOND_NUM_START: {
+				char currentChar = *patternRef;
+
+				if (48 <= currentChar && currentChar <= 57) {
+					result.wasMaxInitialized = true;
+					result.maxMatches = 10 * result.maxMatches + ((uint8_t)currentChar - 48);
+					++result.charsConsumed;
+					++patternRef;
+				} else if (currentChar == ' ' || currentChar == '}') {
+					parseLengthState = ParseCustomLengthState::SECOND_NUM_GET;
+				} else {
+					result.hasError = true;
+					printf("Expected digit only, got: %c\n", currentChar);
+					return result;
+				}
+			} break;
+
+			case ParseCustomLengthState::SECOND_NUM_GET: {
+				while (*patternRef == ' ') { // skip white spaces
+					++patternRef;
+					++result.charsConsumed;
+				}
+				char currentChar = *patternRef;
+
+				if (currentChar == '}') {
+					parseLengthState = ParseCustomLengthState::CLOSING_BRACKET_GET;
+					++patternRef;
+					++result.charsConsumed;
+				} else {
+					result.hasError = true;
+					printf("Expected comma, got: %c\n", currentChar);
+					return result;
+				}
+			} break;
+
+			case ParseCustomLengthState::CLOSING_BRACKET_GET: {
+				goto finalCheckAndReturn;	
+			} break;
+
+			default: {
+				result.hasError = true;
+				printf("Reached impossible state: %d\n", (int)parseLengthState);
+				return result;
+			}
+		}
+	}
+	finalCheckAndReturn:
+	if (result.wasMaxInitialized && result.maxMatches < result.minMatches) {
+		result.hasError = true;
+		printf("Max is smaller than min: %d < %d\n", (int)result.maxMatches, (int)result.minMatches);
+	}
+	return result;
+}
+
 regex_state_machine parseRegex(char *pattern)
 {
 	regex_state_machine stateMachine = {};
@@ -65,29 +211,42 @@ regex_state_machine parseRegex(char *pattern)
 	for (int i = 0; i < patternLength; ++i) {
 		regex_node node;
 
-		if (i < patternLength - 1) {
-			char nextChar = pattern[i + 1];
-			bool consumedNextChar = false;
-			// todo: '++' prevents backtracking. also, need to handle parsing {} for other min/max cases
+		char nextChar = pattern[i + 1]; // null-terminated, so pattern[patternLength] is '\0'
+		uint32_t extraCharsConsumed = 0;
+		// todo: '++' prevents backtracking
+		// todo: escaped / special chars
+		// todo: parsing []
+		// todo: groups :skull:
 
-			if (nextChar == '+') { 
-				consumedNextChar = true;
-				node = regex_node{RegexType::TYPE_REGULAR_CHAR_WITH_LENGTH, pattern[i], 1, 0};
-			}
-
-			if (nextChar == '?') {
-				consumedNextChar = true;
-				node = regex_node{RegexType::TYPE_REGULAR_CHAR_WITH_LENGTH, pattern[i], 0, 1};
-			}
-			// printf("current char: %c, next char: %c, consumed: %d\n", pattern[i], nextChar, (int)consumedNextChar);
-
-			if (consumedNextChar) {
-				++i;
-				goto insertNode;
-			}
+		if (nextChar == '+') { 
+			extraCharsConsumed = 1;
+			node = regex_node{RegexType::TYPE_REGULAR_CHAR_WITH_LENGTH, pattern[i], 1, 0};
 		}
-		node = regex_node{RegexType::TYPE_REGULAR_CHAR_WITH_LENGTH, pattern[i], 1, 1};
-		insertNode: addNodeToStateMachine(&node, &stateMachine);
+
+		if (nextChar == '?') {
+			extraCharsConsumed = 1;
+			node = regex_node{RegexType::TYPE_REGULAR_CHAR_WITH_LENGTH, pattern[i], 0, 1};
+		}
+
+		if (nextChar == '{') {
+			parse_custom_length_result parseResult = parseCustomLength(pattern, i + 1);
+
+			if (parseResult.hasError) {
+				regex_state_machine errorMachine = {};
+				errorMachine.hasError = true;
+				return errorMachine;
+			}
+			extraCharsConsumed = parseResult.charsConsumed;
+			node = regex_node{RegexType::TYPE_REGULAR_CHAR_WITH_LENGTH, pattern[i], parseResult.minMatches, parseResult.maxMatches};
+		}
+		// printf("current char: %c, next char: %c, consumed: %d\n", pattern[i], nextChar, extraCharsConsumed);
+
+		if (extraCharsConsumed) {
+			i += extraCharsConsumed;
+		} else {
+			node = regex_node{RegexType::TYPE_REGULAR_CHAR_WITH_LENGTH, pattern[i], 1, 1};
+		}
+		addNodeToStateMachine(&node, &stateMachine);
 	}
 	printStateMachine(&stateMachine);
 	return stateMachine;
@@ -133,6 +292,9 @@ void resetStateMachine(regex_state_machine *stateMachine) {
 
 void processString(char *testString, regex_state_machine *stateMachine)
 {
+	if (stateMachine->numNodes == 0) {
+		return;
+	}
 	int matchStart = 0;
 	int matchEnd = matchStart;
 	char *testStringRef = testString + matchStart;
@@ -196,7 +358,8 @@ void processString(char *testString, regex_state_machine *stateMachine)
 
 int main(void)
 {
-	char pattern[] = "a+bc?c";
+	// char pattern[] = "a+bc?c";
+		char pattern[] = "a{1,}bc{,1}c{1,1}";
 	char searchLines[][100] = {
 		"abcde",
 		"ab",
