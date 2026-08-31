@@ -65,6 +65,10 @@ void addNodeToStateMachine(regex_node *regexNode, regex_state_machine *stateMach
 }
 
 void printRegexNode(regex_node *regexNode) {
+	if (!regexNode) {
+		// printf("node is null\n");
+		return;
+	}
 	printf(
 		"REGEX NODE: {type: %d, comparisonChar: %c, minMatches: %d, maxMatches: %d, numMatches: %d} \n",
 		(int)regexNode->type, regexNode->comparisonChar, (int)regexNode->minMatches, (int)regexNode->maxMatches, (int)regexNode->numMatches
@@ -281,6 +285,7 @@ bool areLengthNodeMatchesMaxedOut(regex_node *regexNode) {
 }
 
 bool canNodeBeBacktracked(regex_node *regexNode) {
+	// printRegexNode(regexNode);
 	return regexNode && (regexNode->numMatches > regexNode->minMatches);
 }
 
@@ -336,12 +341,10 @@ void processString(char *testString, regex_state_machine *stateMachine)
 			// printRegexNode(currentNode);
 			// printf("string: '%s' / '%s'\n", testStringRef, testString);
 
-			if (areLengthNodeMatchesMaxedOut(currentNode)) {
+			if (areLengthNodeMatchesMaxedOut(currentNode)) { // greedy
 				// printf("node maxed out, moving ahead\n");
 				continue; // move to the next node
-			}
-
-			if (areLengthNodeMatchesInRange(currentNode)) {
+			} else { // need to at least replay node till matches are in range. if ungreedy, it would be !areLengthNodeMatchesInRange
 				// printf("replaying node\n");
 				--i; // replay current node
 			}
