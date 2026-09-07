@@ -42,6 +42,7 @@ enum ParseCharacterClassState
 struct parse_custom_length_result
 {
 	bool hasError;
+	bool isGreedy;
 	uint32_t charsConsumed;
 	uint32_t minMatches;
 	uint32_t maxMatches;
@@ -68,6 +69,8 @@ struct regex_node
 	uint32_t minMatches;
 	uint32_t maxMatches;
 	uint32_t numMatches;
+	bool isGreedy;
+	bool hasLengthSpecified;
 };
 
 struct match_result
@@ -113,15 +116,15 @@ void printRegexNode(regex_node *regexNode) {
 
 	if (regexNode->type == RegexType::TYPE_REGULAR_CHAR_WITH_LENGTH) {
 		printf(
-			"REGEX NODE: {type: %d, comparisonChar: %c, minMatches: %d, maxMatches: %d, numMatches: %d} \n",
-			(int)regexNode->type, regexNode->comparisonChar, (int)regexNode->minMatches, (int)regexNode->maxMatches, (int)regexNode->numMatches
+			"REGEX NODE: {type: %d, comparisonChar: %c, minMatches: %d, maxMatches: %d, numMatches: %d, isGreedy: %d, hasLengthSpecified: %d} \n",
+			(int)regexNode->type, regexNode->comparisonChar, (int)regexNode->minMatches, (int)regexNode->maxMatches, (int)regexNode->numMatches, (int)regexNode->isGreedy, (int)regexNode->hasLengthSpecified
 		);
 	}
 
 	if (regexNode->type == RegexType::TYPE_CHAR_CLASS_WITH_LENGTH) {
 		printf(
-			"REGEX NODE: {type: %d, isNegativeClass: %d, numIntervals: %d, minMatches: %d, maxMatches: %d, numMatches: %d} \n",
-			(int)regexNode->type, (int)regexNode->isNegativeClass, (int)regexNode->numIntervals, (int)regexNode->minMatches, (int)regexNode->maxMatches, (int)regexNode->numMatches
+			"REGEX NODE: {type: %d, isNegativeClass: %d, numIntervals: %d, minMatches: %d, maxMatches: %d, numMatches: %d, isGreedy: %d, hasLengthSpecified: %d} \n",
+			(int)regexNode->type, (int)regexNode->isNegativeClass, (int)regexNode->numIntervals, (int)regexNode->minMatches, (int)regexNode->maxMatches, (int)regexNode->numMatches, (int)regexNode->isGreedy, (int)regexNode->hasLengthSpecified
 		);
 
 		for (int i = 0; i < regexNode->numIntervals; ++i) {
@@ -429,6 +432,12 @@ parse_custom_length_result parseLengthQuantifier(char *pattern, int index, regex
 			parseResult = parseCustomLength(pattern, index);
 		} break;
 	};
+
+	if (parseResult.charsConsumed > 0 && index + parseResult.charsConsumed < strLen(pattern) && pattern[index + parseResult.charsConsumed] == '+') {
+		printf("extra plus found weeeeeeeee\n");
+		++parseResult.charsConsumed;
+		parseResult.isGreedy = true;
+	}
 	return parseResult;
 }
 
@@ -446,9 +455,7 @@ regex_state_machine parseRegex(char *pattern)
 		regex_node *previousNode = stateMachine.numNodes == 0 ? NULL : &stateMachine.regexNodes[stateMachine.numNodes - 1];
 
 		char currentChar = pattern[i];
-		// todo: '++' prevents backtracking
 		// todo: escaped / special chars
-		// todo: parsing []
 		// todo: groups :skull:
 
 		parse_custom_length_result lengthResult = parseLengthQuantifier(pattern, i, &stateMachine);
@@ -459,13 +466,15 @@ regex_state_machine parseRegex(char *pattern)
 		// printf("current char: %c, next char: %c, consumed: %d\n", pattern[i], nextChar, lengthResult.charsConsumed);
 
 		if (lengthResult.charsConsumed > 0) {
-			if (!previousNode) {
-				printf("No previous item for length specification");
+			if (!previousNode || previousNode->hasLengthSpecified) {
+				printf("No previous item for length specification, or the previous node has already been given a length\n");
 				regex_state_machine errorMachine = {};
 				errorMachine.hasError = true;
 			}
 			previousNode->minMatches = lengthResult.minMatches; 
 			previousNode->maxMatches = lengthResult.maxMatches;
+			previousNode->isGreedy = lengthResult.isGreedy;
+			previousNode->hasLengthSpecified = true;
 
 			int onePastLengthQuantifier = i + lengthResult.charsConsumed;
 			i = onePastLengthQuantifier - 1; // ++i when the loop ends would skip a char otherwise
@@ -550,7 +559,7 @@ bool areLengthNodeMatchesMaxedOut(regex_node *regexNode) {
 
 bool canNodeBeBacktracked(regex_node *regexNode) {
 	// printRegexNode(regexNode);
-	return regexNode && (regexNode->numMatches > regexNode->minMatches);
+	return regexNode && !regexNode->isGreedy && (regexNode->numMatches > regexNode->minMatches);
 }
 
 void resetStateMachine(regex_state_machine *stateMachine) {
@@ -615,8 +624,16 @@ void processString(char *testString, regex_state_machine *stateMachine)
 		}
 
 		if (matchedAllNodes) {
-			printf("matched: '%s' from %d to %d. Leftover string: '%s'\n", testString, matchStart, matchEnd, testStringRef);			
-			matchStart = matchEnd;
+			printf("matched: '%s' from %d to %d. Leftover string: '%s'\n", testString, matchStart, matchEnd, testStringRef);
+
+			if (matchEnd > matchStart) {				
+				matchStart = matchEnd;
+			} else {
+				printf("vacuous(?) match, moving ahead by 1\n");
+				++matchStart;
+				matchEnd = matchStart;
+				++testStringRef;
+			}
 		}
 		matchedAllNodes = true;
 		resetStateMachine(stateMachine);
@@ -629,7 +646,8 @@ int main(void)
 		// char pattern[] = "a{1,}bc{,1}c{1,1}";
 	// char pattern[] = "[a-z]+";
 	// char pattern[] = "[]-a-z]+";
-	char pattern[] = "[^a-c-f]+";
+	// char pattern[] = "[^a-c-f]++";
+	char pattern[] = "[a-z]{0,100}+a";
 	char searchLines[][100] = {
 		"abcde",
 		"ab",
