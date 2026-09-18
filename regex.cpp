@@ -141,7 +141,7 @@ void printStateMachine(regex_state_machine *stateMachine) {
 	for (uint32_t i = 0; i < stateMachine->numNodes; ++i) {
 		printRegexNode(&stateMachine->regexNodes[i]);
 	}
-	printf("\n-----------------State Machine End-------------------\n");
+	printf("\n-----------------State Machine End-------------------\n\n");
 }
 
 parse_custom_length_result parseCustomLength(char *pattern, int openingBracketIndex) {
@@ -276,7 +276,7 @@ parse_custom_length_result parseCustomLength(char *pattern, int openingBracketIn
 
 bool addCharacterClassRange(parse_character_class_result *result, three_char_stack *stack)
 {
-	printf("i am call. hasLower: %d, lower: %d, hasRange: %d, upper: %d\n", (int)stack->hasLower, (int)stack->lower, (int)stack->hasRange, (int)stack->upper);
+	// printf("i am call. hasLower: %d, lower: %d, hasRange: %d, upper: %d\n", (int)stack->hasLower, (int)stack->lower, (int)stack->hasRange, (int)stack->upper);
 
 	if (!stack->hasLower) {
 		printf("Stack given when it has no lower item\n");
@@ -313,7 +313,7 @@ parse_character_class_result parseCharacterClass(char *pattern, int index, regex
 
 	// todo: handle special stuff like \d etc here as well. also, \] is not counted as a closing bracket
 	while (shouldContinue && (*patternRef || parsingState == ParseCharacterClassState::CLOSING_BRACKET_GET_CHAR_CLASS)) {
-		printf("state: %d. '%s', consumed: %d, currentChar: %c\n", (int)parsingState, patternRef, (int)result->charsConsumed, patternRef[0]);
+		// printf("state: %d. '%s', consumed: %d, currentChar: %c\n", (int)parsingState, patternRef, (int)result->charsConsumed, patternRef[0]);
 		currentChar = patternRef[0];
 
 		switch (parsingState) {
@@ -432,8 +432,10 @@ parse_custom_length_result parseLengthQuantifier(char *pattern, int index, regex
 			parseResult = parseCustomLength(pattern, index);
 		} break;
 	};
+	int nextCharIndex = index + parseResult.charsConsumed;
+	bool wasLengthQuantifierParsed = !parseResult.hasError && parseResult.charsConsumed > 0;
 
-	if (parseResult.charsConsumed > 0 && index + parseResult.charsConsumed < strLen(pattern) && pattern[index + parseResult.charsConsumed] == '+') {
+	if (wasLengthQuantifierParsed && nextCharIndex < strLen(pattern) && pattern[nextCharIndex] == '+') {
 		printf("extra plus found weeeeeeeee\n");
 		++parseResult.charsConsumed;
 		parseResult.isGreedy = true;
@@ -456,6 +458,7 @@ regex_state_machine parseRegex(char *pattern)
 
 		char currentChar = pattern[i];
 		// todo: escaped / special chars
+		// todo: +/-ive lookahead/backs
 		// todo: groups :skull:
 
 		parse_custom_length_result lengthResult = parseLengthQuantifier(pattern, i, &stateMachine);
@@ -645,9 +648,9 @@ int main(void)
 	// char pattern[] = "a+bc?c";
 		// char pattern[] = "a{1,}bc{,1}c{1,1}";
 	// char pattern[] = "[a-z]+";
-	// char pattern[] = "[]-a-z]+";
+	char pattern[] = "[]-a-z]+";
 	// char pattern[] = "[^a-c-f]++";
-	char pattern[] = "[a-z]{0,100}+a";
+	// char pattern[] = "[a-z]{0,100}+a";
 	char searchLines[][100] = {
 		"abcde",
 		"ab",
