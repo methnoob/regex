@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <cstdint>
-#include <cstring>
+#include "my_string.cpp"
 
 int strLen(char *str)
 {
@@ -80,7 +80,7 @@ struct match_result
 
 struct regex_state_machine
 {
-	char *originalPattern;
+	my_string *originalPattern;
 	bool hasError;
 	uint32_t numNodes;
 	regex_node regexNodes[256];
@@ -136,7 +136,7 @@ void printRegexNode(regex_node *regexNode) {
 
 void printStateMachine(regex_state_machine *stateMachine) {
 	printf("-----------------State Machine Start-----------------\n\n");
-	printf("Original pattern: %s\n\n", stateMachine->originalPattern);
+	printf("Original pattern: %s\n\n", stateMachine->originalPattern->cstr);
 
 	for (uint32_t i = 0; i < stateMachine->numNodes; ++i) {
 		printRegexNode(&stateMachine->regexNodes[i]);
@@ -144,42 +144,41 @@ void printStateMachine(regex_state_machine *stateMachine) {
 	printf("\n-----------------State Machine End-------------------\n\n");
 }
 
-parse_custom_length_result parseCustomLength(char *pattern, int openingBracketIndex) {
+parse_custom_length_result parseCustomLength(my_string *pattern, int openingBracketIndex) {
 	parse_custom_length_result result = {};
 	uint8_t parseLengthState = ParseCustomLengthState::NOT_STARTED;
-	char *patternRef = pattern + openingBracketIndex;
+	int currentIndex = openingBracketIndex;
 	bool continueLoop = true;
 	bool wasMaxInitialized = false;
 
-	while (continueLoop && (*patternRef || parseLengthState == ParseCustomLengthState::CLOSING_BRACKET_GET)) {
+	while (continueLoop && (currentIndex < pattern->length || parseLengthState == ParseCustomLengthState::CLOSING_BRACKET_GET)) {
 		switch (parseLengthState) {
 			case ParseCustomLengthState::NOT_STARTED: {
-				if (*patternRef == '{') {
+				if (charAt(pattern, currentIndex) == '{') {
 					parseLengthState = ParseCustomLengthState::OPENING_BRACKET_GET;
 					++result.charsConsumed;
-					++patternRef;
+					++currentIndex;
 				} else {
 					result.hasError = true;
-					printf("No opening bracket found. '%s' at %d\n", pattern, openingBracketIndex);
+					printf("No opening bracket found. '%s' at %d\n", pattern->cstr, openingBracketIndex);
 					return result;
 				}
 			} break;
 
 			case ParseCustomLengthState::OPENING_BRACKET_GET: {
-				while (*patternRef == ' ') { // skip white spaces
-					++patternRef;
-					++result.charsConsumed;
-				}
+				int skipped = skipConsecutiveSpaces(pattern, currentIndex);
+				currentIndex += skipped;
+				result.charsConsumed += skipped;
 				parseLengthState = ParseCustomLengthState::FIRST_NUM_START;
 			} break;
 
 			case ParseCustomLengthState::FIRST_NUM_START: {
-				char currentChar = *patternRef;
+				char currentChar = charAt(pattern, currentIndex);
 
 				if (48 <= currentChar && currentChar <= 57) {
 					result.minMatches = 10 * result.minMatches + ((uint8_t)currentChar - 48);
 					++result.charsConsumed;
-					++patternRef;
+					++currentIndex;
 				} else if (currentChar == ' ' || currentChar == ',') {
 					parseLengthState = ParseCustomLengthState::FIRST_NUM_GET;
 				} else {
@@ -190,15 +189,14 @@ parse_custom_length_result parseCustomLength(char *pattern, int openingBracketIn
 			} break;
 
 			case ParseCustomLengthState::FIRST_NUM_GET: {
-				while (*patternRef == ' ') { // skip white spaces
-					++patternRef;
-					++result.charsConsumed;
-				}
-				char currentChar = *patternRef;
+				int skipped = skipConsecutiveSpaces(pattern, currentIndex);
+				currentIndex += skipped;
+				result.charsConsumed += skipped;
+				char currentChar = charAt(pattern, currentIndex);
 
 				if (currentChar == ',') {
 					parseLengthState = ParseCustomLengthState::COMMA_GET;
-					++patternRef;
+					++currentIndex;
 					++result.charsConsumed;
 				} else {
 					result.hasError = true;
@@ -208,21 +206,20 @@ parse_custom_length_result parseCustomLength(char *pattern, int openingBracketIn
 			} break;
 
 			case ParseCustomLengthState::COMMA_GET: {
-				while (*patternRef == ' ') { // skip white spaces
-					++patternRef;
-					++result.charsConsumed;
-				}
+				int skipped = skipConsecutiveSpaces(pattern, currentIndex);
+				currentIndex += skipped;
+				result.charsConsumed += skipped;
 				parseLengthState = ParseCustomLengthState::SECOND_NUM_START;
 			} break;
 
 			case ParseCustomLengthState::SECOND_NUM_START: {
-				char currentChar = *patternRef;
+				char currentChar = charAt(pattern, currentIndex);
 
 				if (48 <= currentChar && currentChar <= 57) {
 					wasMaxInitialized = true;
 					result.maxMatches = 10 * result.maxMatches + ((uint8_t)currentChar - 48);
 					++result.charsConsumed;
-					++patternRef;
+					++currentIndex;
 				} else if (currentChar == ' ' || currentChar == '}') {
 					parseLengthState = ParseCustomLengthState::SECOND_NUM_GET;
 				} else {
@@ -233,15 +230,14 @@ parse_custom_length_result parseCustomLength(char *pattern, int openingBracketIn
 			} break;
 
 			case ParseCustomLengthState::SECOND_NUM_GET: {
-				while (*patternRef == ' ') { // skip white spaces
-					++patternRef;
-					++result.charsConsumed;
-				}
-				char currentChar = *patternRef;
+				int skipped = skipConsecutiveSpaces(pattern, currentIndex);
+				currentIndex += skipped;
+				result.charsConsumed += skipped;
+				char currentChar = charAt(pattern, currentIndex);
 
 				if (currentChar == '}') {
 					parseLengthState = ParseCustomLengthState::CLOSING_BRACKET_GET;
-					++patternRef;
+					++currentIndex;
 					++result.charsConsumed;
 				} else {
 					result.hasError = true;
@@ -297,9 +293,9 @@ bool addCharacterClassRange(parse_character_class_result *result, three_char_sta
 	return true;
 }
 
-parse_character_class_result parseCharacterClass(char *pattern, int index, regex_state_machine *stateMachine)
+parse_character_class_result parseCharacterClass(my_string *pattern, int index, regex_state_machine *stateMachine)
 {
-	char currentChar = pattern[index];
+	char currentChar = charAt(pattern, index);
 	parse_character_class_result resultWew = {};
 	parse_character_class_result *result = &resultWew;
 
@@ -307,47 +303,47 @@ parse_character_class_result parseCharacterClass(char *pattern, int index, regex
 		return resultWew;
 	}
 	bool shouldContinue = true;
-	char *patternRef = pattern + index;
+	int currentIndex = index;
 	uint8_t parsingState = ParseCharacterClassState::NOT_STARTED_CHAR_CLASS;
 	three_char_stack charsStack = {};
 
 	// todo: handle special stuff like \d etc here as well. also, \] is not counted as a closing bracket
-	while (shouldContinue && (*patternRef || parsingState == ParseCharacterClassState::CLOSING_BRACKET_GET_CHAR_CLASS)) {
+	while (shouldContinue && (currentIndex < pattern->length || parsingState == ParseCharacterClassState::CLOSING_BRACKET_GET_CHAR_CLASS)) {
 		// printf("state: %d. '%s', consumed: %d, currentChar: %c\n", (int)parsingState, patternRef, (int)result->charsConsumed, patternRef[0]);
-		currentChar = patternRef[0];
+		currentChar = charAt(pattern, currentIndex);
 
 		switch (parsingState) {
 			case ParseCharacterClassState::NOT_STARTED_CHAR_CLASS: {
-				if (*patternRef != '[') {
+				if (currentChar != '[') {
 					result->hasError = true;
 					printf("No opening bracket ([) found\n");
 					return resultWew;
 				}
-				++patternRef;
+				++currentIndex;
 				++result->charsConsumed;
 				parsingState = ParseCharacterClassState::OPENING_BRACKET_GET_CHAR_CLASS;
 			} break;
 
 			case ParseCharacterClassState::OPENING_BRACKET_GET_CHAR_CLASS: {
-				if (*patternRef == '^') {
+				if (currentChar == '^') {
 					result->isNegativeClass = true;
 				} else { // -, ] are special if at the very beginning
 					charsStack.hasLower = true;
-					charsStack.lower = *patternRef;
+					charsStack.lower = currentChar;
 				}
-				++patternRef;
+				++currentIndex;
 				++result->charsConsumed;
 				parsingState = ParseCharacterClassState::NORMAL_PARSING_CHAR_CLASS;
 			} break;
 
 			case ParseCharacterClassState::NORMAL_PARSING_CHAR_CLASS: {
-				if (*patternRef == ']') {
+				if (currentChar == ']') {
 					parsingState = ParseCharacterClassState::CLOSING_BRACKET_GET_CHAR_CLASS;
-					++patternRef;
+					++currentIndex;
 					++result->charsConsumed;
 					break;					
 				}
-				char nextChar = patternRef[1];
+				char nextChar = charAt(pattern, currentIndex + 1);
 
 				if (currentChar == '-' && nextChar && nextChar != ']') {
 					if (!charsStack.hasLower) { // handles cases like [a-z-c], where the z is already in a previous range
@@ -356,7 +352,7 @@ parse_character_class_result parseCharacterClass(char *pattern, int index, regex
 					charsStack.hasRange = true;
 					charsStack.upper = nextChar;
 
-					patternRef += 2;
+					currentIndex += 2;
 					result->charsConsumed += 2;
 
 					if (!addCharacterClassRange(result, &charsStack)) {
@@ -379,7 +375,7 @@ parse_character_class_result parseCharacterClass(char *pattern, int index, regex
 				addCurrentChar:
 				charsStack.hasLower = true;
 				charsStack.lower = currentChar;
-				++patternRef;
+				++currentIndex;
 				++result->charsConsumed;
 			} break;
 
@@ -408,9 +404,9 @@ parse_character_class_result parseCharacterClass(char *pattern, int index, regex
 	return resultWew;
 }
 
-parse_custom_length_result parseLengthQuantifier(char *pattern, int index, regex_state_machine *stateMachine)
+parse_custom_length_result parseLengthQuantifier(my_string *pattern, int index, regex_state_machine *stateMachine)
 {
-	char currentChar = pattern[index];
+	char currentChar = charAt(pattern, index);
 	parse_custom_length_result parseResult = {};
 
 	switch (currentChar) {
@@ -435,7 +431,7 @@ parse_custom_length_result parseLengthQuantifier(char *pattern, int index, regex
 	int nextCharIndex = index + parseResult.charsConsumed;
 	bool wasLengthQuantifierParsed = !parseResult.hasError && parseResult.charsConsumed > 0;
 
-	if (wasLengthQuantifierParsed && nextCharIndex < strLen(pattern) && pattern[nextCharIndex] == '+') {
+	if (wasLengthQuantifierParsed && doesCharAtIndexMatchTestChar(pattern, nextCharIndex, '+')) {
 		printf("extra plus found weeeeeeeee\n");
 		++parseResult.charsConsumed;
 		parseResult.isGreedy = true;
@@ -443,20 +439,19 @@ parse_custom_length_result parseLengthQuantifier(char *pattern, int index, regex
 	return parseResult;
 }
 
-regex_state_machine parseRegex(char *pattern)
+regex_state_machine parseRegex(my_string *pattern)
 {
 	regex_state_machine stateMachine = {};
 	stateMachine.originalPattern = pattern;
-	int patternLength = strLen(pattern);
 
 	regex_state_machine errorMachine = {};
 	errorMachine.hasError = true;
 
-	for (int i = 0; i < patternLength; ++i) {
+	for (int i = 0; i < pattern->length; ++i) {
 		regex_node node;
 		regex_node *previousNode = stateMachine.numNodes == 0 ? NULL : &stateMachine.regexNodes[stateMachine.numNodes - 1];
 
-		char currentChar = pattern[i];
+		char currentChar = charAt(pattern, i);
 		// todo: escaped / special chars
 		// todo: +/-ive lookahead/backs
 		// todo: groups :skull:
@@ -466,7 +461,7 @@ regex_state_machine parseRegex(char *pattern)
 		if (lengthResult.hasError) {
 			return errorMachine;
 		}
-		// printf("current char: %c, next char: %c, consumed: %d\n", pattern[i], nextChar, lengthResult.charsConsumed);
+		// printf("current char: %c, next char: %c, consumed: %d\n", charAt(pattern, i), nextChar, lengthResult.charsConsumed);
 
 		if (lengthResult.charsConsumed > 0) {
 			if (!previousNode || previousNode->hasLengthSpecified) {
@@ -507,7 +502,7 @@ regex_state_machine parseRegex(char *pattern)
 		} else {
 			node = regex_node{
 				.type = RegexType::TYPE_REGULAR_CHAR_WITH_LENGTH, 
-				.comparisonChar = pattern[i], 
+				.comparisonChar = charAt(pattern, i), 
 				.minMatches = 1, 
 				.maxMatches = 1
 			};
@@ -571,14 +566,14 @@ void resetStateMachine(regex_state_machine *stateMachine) {
 	}
 }
 
-void processString(char *testString, regex_state_machine *stateMachine)
+void processString(my_string *testString, regex_state_machine *stateMachine)
 {
 	if (stateMachine->numNodes == 0) {
 		return;
 	}
 	int matchStart = 0;
 	int matchEnd = matchStart;
-	char *testStringRef = testString + matchStart;
+	char *testStringRef = testString->cstr + matchStart;
 
 	while (*testStringRef) {
 		bool matchedAllNodes = true;
@@ -606,7 +601,7 @@ void processString(char *testString, regex_state_machine *stateMachine)
 				matchedAllNodes = false;
 				++matchStart; // move starting index ahead
 				// reset ref and end index
-				testStringRef = testString + matchStart;
+				testStringRef = testString->cstr + matchStart;
 				matchEnd = matchStart;
 			} else {
 				// move end index and ref ahead
@@ -627,7 +622,7 @@ void processString(char *testString, regex_state_machine *stateMachine)
 		}
 
 		if (matchedAllNodes) {
-			printf("matched: '%s' from %d to %d. Leftover string: '%s'\n", testString, matchStart, matchEnd, testStringRef);
+			printf("matched: '%s' from %d to %d. Leftover string: '%s'\n", testString->cstr, matchStart, matchEnd, testStringRef);
 
 			if (matchEnd > matchStart) {				
 				matchStart = matchEnd;
@@ -659,11 +654,12 @@ int main(void)
 		"-]"
 	};
 	int numLines = sizeof(searchLines) / sizeof(*searchLines);
-	int patternLength = strLen(pattern);
-	regex_state_machine stateMachine = parseRegex(pattern);
+	my_string patternString = fromCString(pattern, strLen(pattern));
+	regex_state_machine stateMachine = parseRegex(&patternString);
 
 	for (int i = 0; i < numLines; ++i) {
-		processString(searchLines[i], &stateMachine);
+		my_string testString = fromCString(searchLines[i], strLen(searchLines[i]));
+		processString(&testString, &stateMachine);
 	}
 	return 0;
 }
