@@ -1,7 +1,10 @@
 #include <stdio.h>
 #include <cstdint>
+#include "arena.cpp"
 #include "my_string.cpp"
 #include "regex.h"
+
+static memory_arena GlobalArena;
 
 int strLen(char *str)
 {
@@ -200,6 +203,10 @@ bool addCharacterClassRange(parse_character_class_result *result, three_char_sta
 		return false;
 	}
 	interval characterRangeInterval = {(uint8_t)stack->lower, (uint8_t)stack->upper};
+
+	if (result->numIntervals >= 255) {
+		printf("interval array length exceeded\n");
+	}
 	result->characterRangeIntervals[result->numIntervals++] = characterRangeInterval;
 	return true;
 }
@@ -208,11 +215,12 @@ parse_character_class_result parseCharacterClass(my_string *pattern, int index, 
 {
 	char currentChar = charAt(pattern, index);
 	parse_character_class_result resultWew = {};
-	parse_character_class_result *result = &resultWew;
 
 	if (currentChar != '[') {
 		return resultWew;
 	}
+	parse_character_class_result *result = &resultWew;
+	result->characterRangeIntervals = PushArray(&GlobalArena, 256, interval);
 	bool shouldContinue = true;
 	int currentIndex = index;
 	uint8_t parsingState = ParseCharacterClassState::NOT_STARTED_CHAR_CLASS;
@@ -354,6 +362,7 @@ regex_state_machine parseRegex(my_string *pattern)
 {
 	regex_state_machine stateMachine = {};
 	stateMachine.originalPattern = pattern;
+	stateMachine.regexNodes = PushArray(&GlobalArena, 256, regex_node);
 
 	regex_state_machine errorMachine = {};
 	errorMachine.hasError = true;
@@ -403,11 +412,7 @@ regex_state_machine parseRegex(my_string *pattern)
 				.minMatches = 1,
 				.maxMatches = 1,
 			};
-			memcpy(
-			    node.characterRangeIntervals,
-			    characterClassResult.characterRangeIntervals,
-			    sizeof(node.characterRangeIntervals)
-			);
+			node.characterRangeIntervals = characterClassResult.characterRangeIntervals;
 			int onePastLengthQuantifier = i + characterClassResult.charsConsumed;
 			i = onePastLengthQuantifier - 1; // ++i when the loop ends would skip a char otherwise
 		} else {
@@ -551,6 +556,10 @@ void processString(my_string *testString, regex_state_machine *stateMachine)
 
 int main(void)
 {
+	uint32_t bufferSize = (uint32_t)Megabytes(20);
+	uint8_t *backingMemory = new uint8_t[bufferSize];
+	initializeArena(&GlobalArena, bufferSize, backingMemory);
+
 	// char pattern[] = "a+bc?c";
 		// char pattern[] = "a{1,}bc{,1}c{1,1}";
 	// char pattern[] = "[a-z]+";
@@ -565,12 +574,13 @@ int main(void)
 		"-]"
 	};
 	int numLines = sizeof(searchLines) / sizeof(*searchLines);
-	my_string patternString = fromCString(pattern, strLen(pattern));
+	my_string patternString = fromCString(&GlobalArena, pattern, strLen(pattern));
 	regex_state_machine stateMachine = parseRegex(&patternString);
 
 	for (int i = 0; i < numLines; ++i) {
-		my_string testString = fromCString(searchLines[i], strLen(searchLines[i]));
+		my_string testString = fromCString(&GlobalArena, searchLines[i], strLen(searchLines[i]));
 		processString(&testString, &stateMachine);
 	}
+	printf("\n\nmemory used: %llu bytes\n\n", GlobalArena.currentOffset);
 	return 0;
 }

@@ -49,7 +49,7 @@ struct regex_node
 	// character class
 	bool isNegativeClass;
 	uint32_t numIntervals;
-	interval characterRangeIntervals[256];
+	interval *characterRangeIntervals;
 
 	uint32_t minMatches;
 	uint32_t maxMatches;
@@ -68,7 +68,7 @@ struct regex_state_machine
 	my_string *originalPattern;
 	bool hasError;
 	uint32_t numNodes;
-	regex_node regexNodes[256];
+	regex_node *regexNodes;
 };
 
 struct parse_character_class_result
@@ -77,7 +77,7 @@ struct parse_character_class_result
 	uint32_t charsConsumed;
 	bool isNegativeClass;
 	uint32_t numIntervals;
-	interval characterRangeIntervals[256];
+	interval *characterRangeIntervals;
 };
 
 struct three_char_stack

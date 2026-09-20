@@ -1,5 +1,3 @@
-#include <cstring>
-
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #define max(a, b) ((a) > (b) ? (a) : (b))
 
@@ -10,19 +8,14 @@ struct my_string
 	char *cstr;
 };
 
-my_string fromCString(char *cString, int length)
+my_string fromCString(memory_arena *arena, char *cString, int length)
 {
 	if (length <= 0) {
 		return my_string{};
 	}
-
-	if (length >= 256) {
-		printf("Num chars (including null terminator): %u exceeds max length (currently 256). Clipping to 255", length);
-		length = 255;
-	}
 	my_string result = {};
 	result.length = length;
-	result.cstr = new char[length + 1]; // including the null terminator
+	result.cstr = PushArray(arena, length + 1, char); // including the null terminator
 	memcpy(result.cstr, cString, length + 1);
 	return result;
 }
