@@ -2,6 +2,20 @@ enum RegexType
 {
 	TYPE_REGULAR_CHAR_WITH_LENGTH = 1,
 	TYPE_CHAR_CLASS_WITH_LENGTH = 2,
+	TYPE_META_CHAR_WITH_LENGTH = 3
+};
+
+enum SpecialChar
+{
+	SpecialChar_Literal,
+	SpecialChar_Meta
+};
+
+enum CharContext
+{
+	CharContext_Regular,
+	CharContext_CharacterClass,
+	CharContext_End
 };
 
 enum ParseCustomLengthState
@@ -22,6 +36,14 @@ enum ParseCharacterClassState
 	OPENING_BRACKET_GET_CHAR_CLASS,
 	NORMAL_PARSING_CHAR_CLASS,
 	CLOSING_BRACKET_GET_CHAR_CLASS
+};
+
+struct parse_special_character_result
+{
+	bool hasError;
+	char specialChar;
+	SpecialChar charType;
+	uint8_t charsConsumed;
 };
 
 struct parse_custom_length_result

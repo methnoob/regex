@@ -5,8 +5,9 @@
 #include "regex.h"
 
 static memory_arena GlobalArena;
+static char metaCharacters[] = "dDsSwWN";
 
-int strLen(char *str)
+int strLen(const char *str)
 {
 	int length = 0;
 
@@ -43,9 +44,9 @@ void printRegexNode(regex_node *regexNode) {
 
 		for (int i = 0; i < regexNode->numIntervals; ++i) {
 			interval *rangeInterval = &regexNode->characterRangeIntervals[i];
-			printf("[%c, %c]\n", (char)rangeInterval->min, (char)rangeInterval->max);
+			printf("[%c, %c] (= [%d, %d])\n", (char)rangeInterval->min, (char)rangeInterval->max, rangeInterval->min, rangeInterval->max);
 		}
-}
+	}
 }
 
 void printStateMachine(regex_state_machine *stateMachine) {
@@ -358,6 +359,61 @@ parse_custom_length_result parseLengthQuantifier(my_string *pattern, int index, 
 	return parseResult;
 }
 
+parse_special_character_result parseSpecialCharacter(my_string *pattern, int index, CharContext charContext)
+{
+	const char *escapableCharacters;
+	parse_special_character_result result = {};
+
+	switch (charContext) {
+		case CharContext::CharContext_Regular: {
+			escapableCharacters = "()|.*+?{[0\\";
+
+			if (doesCharAtIndexMatchTestChar(pattern, index, '.')) {
+				result.specialChar = '.';
+				result.charType = SpecialChar::SpecialChar_Meta;
+				result.charsConsumed = 1;
+				return result;
+			}
+		} break;
+
+		case CharContext::CharContext_CharacterClass: {
+			escapableCharacters = "]^0\\";
+		} break;
+
+		default: {
+			printf("invalid char context given: %d\n", (int)charContext);
+			result.hasError = true;
+			return result;
+		}
+	}
+
+	if (!doesCharAtIndexMatchTestChar(pattern, index, '\\')) {
+		return result;
+	}
+
+	for (int i = 0; i < strLen(metaCharacters); ++i) {
+		if (doesCharAtIndexMatchTestChar(pattern, index + 1, metaCharacters[i])) {
+			result.specialChar = metaCharacters[i];
+			result.charType = SpecialChar::SpecialChar_Meta;
+			result.charsConsumed = 2;
+			return result;
+		}
+	}
+
+	for (int i = 0; i < strLen(escapableCharacters); ++i) {
+		if (doesCharAtIndexMatchTestChar(pattern, index + 1, escapableCharacters[i])) {
+			result.specialChar = escapableCharacters[i];
+			result.charType = SpecialChar::SpecialChar_Literal;
+			result.charsConsumed = 2;
+			return result;
+		}
+	}
+	char nextChar = charAt(pattern, index + 1);
+	printf("unrecognized / empty char escape: %c (%d)\n", nextChar, (int)nextChar);
+	result.hasError = true;
+	return result;
+}
+
 regex_state_machine parseRegex(my_string *pattern)
 {
 	regex_state_machine stateMachine = {};
@@ -416,12 +472,38 @@ regex_state_machine parseRegex(my_string *pattern)
 			int onePastLengthQuantifier = i + characterClassResult.charsConsumed;
 			i = onePastLengthQuantifier - 1; // ++i when the loop ends would skip a char otherwise
 		} else {
-			node = regex_node{
-				.type = RegexType::TYPE_REGULAR_CHAR_WITH_LENGTH, 
-				.comparisonChar = charAt(pattern, i), 
-				.minMatches = 1, 
-				.maxMatches = 1
-			};
+			parse_special_character_result specialCharResult = parseSpecialCharacter(pattern, i, CharContext_Regular);
+
+			if (specialCharResult.hasError) {
+				return errorMachine;
+			}
+
+			if (specialCharResult.charsConsumed > 0) {
+				if (specialCharResult.charType == SpecialChar::SpecialChar_Literal) {
+					node = regex_node{
+						.type = RegexType::TYPE_REGULAR_CHAR_WITH_LENGTH, 
+						.comparisonChar = specialCharResult.specialChar, 
+						.minMatches = 1, 
+						.maxMatches = 1
+					};
+				} else {
+					node = regex_node{
+						.type = RegexType::TYPE_META_CHAR_WITH_LENGTH, 
+						.comparisonChar = specialCharResult.specialChar, 
+						.minMatches = 1, 
+						.maxMatches = 1
+					};
+				}
+				int onePastLengthQuantifier = i + specialCharResult.charsConsumed;
+				i = onePastLengthQuantifier - 1; // ++i when the loop ends would skip a char otherwise
+			} else {
+				node = regex_node{
+					.type = RegexType::TYPE_REGULAR_CHAR_WITH_LENGTH, 
+					.comparisonChar = currentChar, 
+					.minMatches = 1, 
+					.maxMatches = 1
+				};
+			}
 		}
 		addNodeToStateMachine(&node, &stateMachine);
 	}
@@ -429,10 +511,54 @@ regex_state_machine parseRegex(my_string *pattern)
 	return stateMachine;
 }
 
+bool matchMetaChar(char metaChar, char testChar)
+{
+	bool result = false;
+
+	switch (metaChar) {
+		case '.': {
+			result = testChar != '\n';
+		} break;
+
+		case 'd': {
+			result = '0' <= testChar && testChar <= '9';
+		} break;
+
+		case 'D': {
+			result = !('0' <= testChar && testChar <= '9');
+		} break;
+
+		case 's': {
+			result = (testChar == ' ') || (testChar == '\t');
+		} break;
+
+		case 'S': {
+			result = !((testChar == ' ') || (testChar == '\t'));
+		} break;
+
+		case 'w': {
+			result = ('a' <= testChar && testChar <= 'z') || ('A' <= testChar && testChar <= 'Z');
+		} break;
+
+		case 'W': {
+			result = !(('a' <= testChar && testChar <= 'z') || ('A' <= testChar && testChar <= 'Z'));
+		} break;
+
+		case 'N': {
+			result = testChar != '\n';
+		} break;
+
+		default: {
+			printf("unknown meta char: %c\n", metaChar);
+		}
+	}
+	return result;
+}
+
 match_result doesNodeMatch(regex_node *regexNode, char *testString) {
 	match_result result = {};
 
-	if (*testString == 0) {
+	if (*testString == 0) { // todo: this should be binary-safe
 		return result;
 	}
 	char currentChar = testString[0];
@@ -456,6 +582,10 @@ match_result doesNodeMatch(regex_node *regexNode, char *testString) {
 		}
 		// if it is negative, we want it to match 0 intervals. otherwise, even one match is good
 		result.matched = regexNode->isNegativeClass ? !matchedInterval : matchedInterval;
+	}
+
+	if (regexNode->type == RegexType::TYPE_META_CHAR_WITH_LENGTH) {
+		result.matched = matchMetaChar(regexNode->comparisonChar, testString[0]);
 	}
 	return result;
 }
@@ -563,15 +693,20 @@ int main(void)
 	// char pattern[] = "a+bc?c";
 		// char pattern[] = "a{1,}bc{,1}c{1,1}";
 	// char pattern[] = "[a-z]+";
-	char pattern[] = "[]-a-z]+";
+	// char pattern[] = "[]-a-z]+";
 	// char pattern[] = "[^a-c-f]++";
 	// char pattern[] = "[a-z]{0,100}+a";
+	// char pattern[] = ".*c";
+	// char pattern[] = "\\w+";
+	// char pattern[] = "\\d+";
+	char pattern[] = "\\{";
 	char searchLines[][100] = {
 		"abcde",
 		"ab",
 		"abcabcd",
 		"aaaaabcaaabcaaaaaaaaaaaaab",
-		"-]"
+		"-]",
+		"-]132[]11{["
 	};
 	int numLines = sizeof(searchLines) / sizeof(*searchLines);
 	my_string patternString = fromCString(&GlobalArena, pattern, strLen(pattern));
