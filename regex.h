@@ -73,6 +73,9 @@ struct regex_node
 	uint32_t numIntervals;
 	interval *characterRangeIntervals;
 
+	uint32_t numMetaChars;
+	char *metaChars;
+
 	uint32_t minMatches;
 	uint32_t maxMatches;
 	uint32_t numMatches;

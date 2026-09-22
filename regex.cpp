@@ -5,7 +5,7 @@
 #include "regex.h"
 
 static memory_arena GlobalArena;
-static char metaCharacters[] = "dDsSwWN";
+static char metaCharacters[] = "dDsSwW";
 
 int strLen(const char *str)
 {
@@ -46,6 +46,13 @@ void printRegexNode(regex_node *regexNode) {
 			interval *rangeInterval = &regexNode->characterRangeIntervals[i];
 			printf("[%c, %c] (= [%d, %d])\n", (char)rangeInterval->min, (char)rangeInterval->max, rangeInterval->min, rangeInterval->max);
 		}
+	}
+
+	if (regexNode->type == RegexType_MetaChar) {
+		printf(
+			"REGEX NODE: {type: %d, comparisonChar: %c, minMatches: %d, maxMatches: %d, numMatches: %d, isGreedy: %d, hasLengthSpecified: %d} \n",
+			(int)regexNode->type, regexNode->comparisonChar, (int)regexNode->minMatches, (int)regexNode->maxMatches, (int)regexNode->numMatches, (int)regexNode->isGreedy, (int)regexNode->hasLengthSpecified
+		);
 	}
 }
 
@@ -222,12 +229,13 @@ parse_character_class_result parseCharacterClass(my_string *pattern, int index, 
 	}
 	parse_character_class_result *result = &resultWew;
 	result->characterRangeIntervals = PushArray(&GlobalArena, 256, interval);
+	result->metaChars = PushArray(&GlobalArena, 256, char);
+
 	bool shouldContinue = true;
 	int currentIndex = index;
 	uint8_t parsingState = ParseCharacterClassState_NotStarted;
 	three_char_stack charsStack = {};
 
-	// todo: handle special stuff like \d etc here as well. also, \] is not counted as a closing bracket
 	while (shouldContinue && (currentIndex < pattern->length || parsingState == ParseCharacterClassState_ClosingBracketGet)) {
 		// printf("state: %d. '%s', consumed: %d, currentChar: %c\n", (int)parsingState, patternRef, (int)result->charsConsumed, patternRef[0]);
 		currentChar = charAt(pattern, currentIndex);
@@ -465,10 +473,10 @@ regex_state_machine parseRegex(my_string *pattern)
 				.type = RegexType_CharClass, 
 				.isNegativeClass = characterClassResult.isNegativeClass,
 				.numIntervals = characterClassResult.numIntervals,
+				.characterRangeIntervals = characterClassResult.characterRangeIntervals,
 				.minMatches = 1,
 				.maxMatches = 1,
 			};
-			node.characterRangeIntervals = characterClassResult.characterRangeIntervals;
 			int onePastLengthQuantifier = i + characterClassResult.charsConsumed;
 			i = onePastLengthQuantifier - 1; // ++i when the loop ends would skip a char otherwise
 		} else {
@@ -511,49 +519,52 @@ regex_state_machine parseRegex(my_string *pattern)
 	return stateMachine;
 }
 
-bool matchMetaChar(char metaChar, char testChar)
+inline bool matchWildcard(char testChar)
 {
-	bool result = false;
-
-	switch (metaChar) {
-		case '.': {
-			result = testChar != '\n';
-		} break;
-
-		case 'd': {
-			result = '0' <= testChar && testChar <= '9';
-		} break;
-
-		case 'D': {
-			result = !('0' <= testChar && testChar <= '9');
-		} break;
-
-		case 's': {
-			result = (testChar == ' ') || (testChar == '\t');
-		} break;
-
-		case 'S': {
-			result = !((testChar == ' ') || (testChar == '\t'));
-		} break;
-
-		case 'w': {
-			result = ('a' <= testChar && testChar <= 'z') || ('A' <= testChar && testChar <= 'Z');
-		} break;
-
-		case 'W': {
-			result = !(('a' <= testChar && testChar <= 'z') || ('A' <= testChar && testChar <= 'Z'));
-		} break;
-
-		case 'N': {
-			result = testChar != '\n';
-		} break;
-
-		default: {
-			printf("unknown meta char: %c\n", metaChar);
-		}
-	}
-	return result;
+	return testChar != '\n';
 }
+
+inline bool matchDigit(char testChar)
+{
+	return '0' <= testChar && testChar <= '9';
+}
+
+inline bool matchWord(char testChar)
+{
+	return ('a' <= testChar && testChar <= 'z') || ('A' <= testChar && testChar <= 'Z') || testChar == '_' || matchDigit(testChar);
+}
+
+inline bool matchSpace(char testChar)
+{
+	switch (testChar) {
+		case ' ':
+		case '\t':
+		case '\n':
+		case '\r':
+		case '\v':
+		case '\f':
+			return true;
+		default: return false;
+	}
+}
+
+inline bool matchMetaChar(char metaChar, char testChar)
+{
+    switch (metaChar) {
+        case '.': return matchWildcard(testChar);
+        case 'd': return matchDigit(testChar);
+        case 'D': return !matchDigit(testChar);
+        case 's': return matchSpace(testChar);
+        case 'S': return !matchSpace(testChar);
+        case 'w': return matchWord(testChar);
+        case 'W': return !matchWord(testChar);
+
+        default:
+            printf("unknown meta char: %c\n", metaChar);
+            return false;
+    }
+}
+
 
 match_result doesNodeMatch(regex_node *regexNode, char *testString) {
 	match_result result = {};
@@ -577,8 +588,12 @@ match_result doesNodeMatch(regex_node *regexNode, char *testString) {
 
 			if (characterRangeInterval->min <= currentChar && currentChar <= characterRangeInterval->max) {
 				matchedInterval = true;
-				break;
 			}
+		}
+
+		for (uint32_t i = 0; i < regexNode->numMetaChars && !matchedInterval; ++i) {
+			char metaChar = regexNode->metaChars[i];
+			matchedInterval = matchMetaChar(metaChar, currentChar);
 		}
 		// if it is negative, we want it to match 0 intervals. otherwise, even one match is good
 		result.matched = regexNode->isNegativeClass ? !matchedInterval : matchedInterval;
@@ -696,19 +711,21 @@ int main(void)
 	// char pattern[] = "[]-a-z]+";
 	// char pattern[] = "[^a-c-f]++";
 	// char pattern[] = "[a-z]{0,100}+a";
-	// char pattern[] = ".*c";
+	char pattern[] = ".*c";
 	// char pattern[] = "\\w+";
-	char pattern[] = "\\d+";
+	// char pattern[] = "\\d+";
 	// char pattern[] = "\\{";
 	// char pattern[] = "\\[a?b?]";
-	// char pattern[] = "[ab\\]]";
+	// char pattern[] = "[ab\\]]+";
+	// char pattern[] = "[[\\]a-z\\-]";
 	char searchLines[][100] = {
 		"abcde",
 		"ab",
 		"abcabcd",
 		"aaaaabcaaabcaaaaaaaaaaaaab",
 		"-]",
-		"-]132[]11{[]"
+		"-]132[]11{[]",
+		"[a-z]"
 	};
 	int numLines = sizeof(searchLines) / sizeof(*searchLines);
 	my_string patternString = fromCString(&GlobalArena, pattern, strLen(pattern));
