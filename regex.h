@@ -1,48 +1,48 @@
-enum RegexType
+enum RegexType: uint8_t
 {
-	TYPE_REGULAR_CHAR_WITH_LENGTH = 1,
-	TYPE_CHAR_CLASS_WITH_LENGTH = 2,
-	TYPE_META_CHAR_WITH_LENGTH = 3
+	RegexType_RegularChar = 1,
+	RegexType_CharClass = 2,
+	RegexType_MetaChar = 3
 };
 
-enum SpecialChar
+enum SpecialCharType: uint8_t
 {
 	SpecialChar_Literal,
 	SpecialChar_Meta
 };
 
-enum CharContext
+enum CharContext: uint8_t
 {
 	CharContext_Regular,
 	CharContext_CharacterClass,
 	CharContext_End
 };
 
-enum ParseCustomLengthState
+enum ParseCustomLengthState: uint8_t
 {
-	NOT_STARTED,
-	OPENING_BRACKET_GET,
-	FIRST_NUM_START,
-	FIRST_NUM_GET,
-	COMMA_GET,
-	SECOND_NUM_START,
-	SECOND_NUM_GET,
-	CLOSING_BRACKET_GET
+	ParseCustomLengthState_NotStarted,
+	ParseCustomLengthState_OpeningBracketGet,
+	ParseCustomLengthState_FirstNumStart,
+	ParseCustomLengthState_FirstNumGet,
+	ParseCustomLengthState_CommaGet,
+	ParseCustomLengthState_SecondNumStart,
+	ParseCustomLengthState_SecondNumGet,
+	ParseCustomLengthState_ClosingBracketGet
 };
 
-enum ParseCharacterClassState
+enum ParseCharacterClassState: uint8_t
 {
-	NOT_STARTED_CHAR_CLASS,
-	OPENING_BRACKET_GET_CHAR_CLASS,
-	NORMAL_PARSING_CHAR_CLASS,
-	CLOSING_BRACKET_GET_CHAR_CLASS
+	ParseCharacterClassState_NotStarted,
+	ParseCharacterClassState_OpeningBracketGet,
+	ParseCharacterClassState_NormalParsing,
+	ParseCharacterClassState_ClosingBracketGet
 };
 
 struct parse_special_character_result
 {
 	bool hasError;
 	char specialChar;
-	SpecialChar charType;
+	SpecialCharType charType;
 	uint8_t charsConsumed;
 };
 
@@ -63,7 +63,7 @@ struct interval
 
 struct regex_node
 {
-	uint8_t type;
+	RegexType type;
 
 	// for a single char
 	char comparisonChar;

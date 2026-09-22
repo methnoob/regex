@@ -29,14 +29,14 @@ void printRegexNode(regex_node *regexNode) {
 		return;
 	}
 
-	if (regexNode->type == RegexType::TYPE_REGULAR_CHAR_WITH_LENGTH) {
+	if (regexNode->type == RegexType_RegularChar) {
 		printf(
 			"REGEX NODE: {type: %d, comparisonChar: %c, minMatches: %d, maxMatches: %d, numMatches: %d, isGreedy: %d, hasLengthSpecified: %d} \n",
 			(int)regexNode->type, regexNode->comparisonChar, (int)regexNode->minMatches, (int)regexNode->maxMatches, (int)regexNode->numMatches, (int)regexNode->isGreedy, (int)regexNode->hasLengthSpecified
 		);
 	}
 
-	if (regexNode->type == RegexType::TYPE_CHAR_CLASS_WITH_LENGTH) {
+	if (regexNode->type == RegexType_CharClass) {
 		printf(
 			"REGEX NODE: {type: %d, isNegativeClass: %d, numIntervals: %d, minMatches: %d, maxMatches: %d, numMatches: %d, isGreedy: %d, hasLengthSpecified: %d} \n",
 			(int)regexNode->type, (int)regexNode->isNegativeClass, (int)regexNode->numIntervals, (int)regexNode->minMatches, (int)regexNode->maxMatches, (int)regexNode->numMatches, (int)regexNode->isGreedy, (int)regexNode->hasLengthSpecified
@@ -61,16 +61,16 @@ void printStateMachine(regex_state_machine *stateMachine) {
 
 parse_custom_length_result parseCustomLength(my_string *pattern, int openingBracketIndex) {
 	parse_custom_length_result result = {};
-	uint8_t parseLengthState = ParseCustomLengthState::NOT_STARTED;
+	uint8_t parseLengthState = ParseCustomLengthState_NotStarted;
 	int currentIndex = openingBracketIndex;
 	bool continueLoop = true;
 	bool wasMaxInitialized = false;
 
-	while (continueLoop && (currentIndex < pattern->length || parseLengthState == ParseCustomLengthState::CLOSING_BRACKET_GET)) {
+	while (continueLoop && (currentIndex < pattern->length || parseLengthState == ParseCustomLengthState_ClosingBracketGet)) {
 		switch (parseLengthState) {
-			case ParseCustomLengthState::NOT_STARTED: {
+			case ParseCustomLengthState_NotStarted: {
 				if (charAt(pattern, currentIndex) == '{') {
-					parseLengthState = ParseCustomLengthState::OPENING_BRACKET_GET;
+					parseLengthState = ParseCustomLengthState_OpeningBracketGet;
 					++result.charsConsumed;
 					++currentIndex;
 				} else {
@@ -80,14 +80,14 @@ parse_custom_length_result parseCustomLength(my_string *pattern, int openingBrac
 				}
 			} break;
 
-			case ParseCustomLengthState::OPENING_BRACKET_GET: {
+			case ParseCustomLengthState_OpeningBracketGet: {
 				int skipped = skipConsecutiveSpaces(pattern, currentIndex);
 				currentIndex += skipped;
 				result.charsConsumed += skipped;
-				parseLengthState = ParseCustomLengthState::FIRST_NUM_START;
+				parseLengthState = ParseCustomLengthState_FirstNumStart;
 			} break;
 
-			case ParseCustomLengthState::FIRST_NUM_START: {
+			case ParseCustomLengthState_FirstNumStart: {
 				char currentChar = charAt(pattern, currentIndex);
 
 				if (48 <= currentChar && currentChar <= 57) {
@@ -95,7 +95,7 @@ parse_custom_length_result parseCustomLength(my_string *pattern, int openingBrac
 					++result.charsConsumed;
 					++currentIndex;
 				} else if (currentChar == ' ' || currentChar == ',') {
-					parseLengthState = ParseCustomLengthState::FIRST_NUM_GET;
+					parseLengthState = ParseCustomLengthState_FirstNumGet;
 				} else {
 					result.hasError = true;
 					printf("Expected digit only, got: %c\n", currentChar);
@@ -103,14 +103,14 @@ parse_custom_length_result parseCustomLength(my_string *pattern, int openingBrac
 				}
 			} break;
 
-			case ParseCustomLengthState::FIRST_NUM_GET: {
+			case ParseCustomLengthState_FirstNumGet: {
 				int skipped = skipConsecutiveSpaces(pattern, currentIndex);
 				currentIndex += skipped;
 				result.charsConsumed += skipped;
 				char currentChar = charAt(pattern, currentIndex);
 
 				if (currentChar == ',') {
-					parseLengthState = ParseCustomLengthState::COMMA_GET;
+					parseLengthState = ParseCustomLengthState_CommaGet;
 					++currentIndex;
 					++result.charsConsumed;
 				} else {
@@ -120,14 +120,14 @@ parse_custom_length_result parseCustomLength(my_string *pattern, int openingBrac
 				}
 			} break;
 
-			case ParseCustomLengthState::COMMA_GET: {
+			case ParseCustomLengthState_CommaGet: {
 				int skipped = skipConsecutiveSpaces(pattern, currentIndex);
 				currentIndex += skipped;
 				result.charsConsumed += skipped;
-				parseLengthState = ParseCustomLengthState::SECOND_NUM_START;
+				parseLengthState = ParseCustomLengthState_SecondNumStart;
 			} break;
 
-			case ParseCustomLengthState::SECOND_NUM_START: {
+			case ParseCustomLengthState_SecondNumStart: {
 				char currentChar = charAt(pattern, currentIndex);
 
 				if (48 <= currentChar && currentChar <= 57) {
@@ -136,7 +136,7 @@ parse_custom_length_result parseCustomLength(my_string *pattern, int openingBrac
 					++result.charsConsumed;
 					++currentIndex;
 				} else if (currentChar == ' ' || currentChar == '}') {
-					parseLengthState = ParseCustomLengthState::SECOND_NUM_GET;
+					parseLengthState = ParseCustomLengthState_SecondNumGet;
 				} else {
 					result.hasError = true;
 					printf("Expected digit only, got: %c\n", currentChar);
@@ -144,14 +144,14 @@ parse_custom_length_result parseCustomLength(my_string *pattern, int openingBrac
 				}
 			} break;
 
-			case ParseCustomLengthState::SECOND_NUM_GET: {
+			case ParseCustomLengthState_SecondNumGet: {
 				int skipped = skipConsecutiveSpaces(pattern, currentIndex);
 				currentIndex += skipped;
 				result.charsConsumed += skipped;
 				char currentChar = charAt(pattern, currentIndex);
 
 				if (currentChar == '}') {
-					parseLengthState = ParseCustomLengthState::CLOSING_BRACKET_GET;
+					parseLengthState = ParseCustomLengthState_ClosingBracketGet;
 					++currentIndex;
 					++result.charsConsumed;
 				} else {
@@ -161,7 +161,7 @@ parse_custom_length_result parseCustomLength(my_string *pattern, int openingBrac
 				}
 			} break;
 
-			case ParseCustomLengthState::CLOSING_BRACKET_GET: {
+			case ParseCustomLengthState_ClosingBracketGet: {
 				continueLoop = false;	
 			} break;
 
@@ -178,7 +178,7 @@ parse_custom_length_result parseCustomLength(my_string *pattern, int openingBrac
 		printf("Max is smaller than min: %d < %d\n", (int)result.maxMatches, (int)result.minMatches);
 	}
 
-	if (parseLengthState != ParseCustomLengthState::CLOSING_BRACKET_GET) {
+	if (parseLengthState != ParseCustomLengthState_ClosingBracketGet) {
 		result.hasError = true;
 		printf("Parsing length could not complete\n");
 	}
@@ -224,16 +224,16 @@ parse_character_class_result parseCharacterClass(my_string *pattern, int index, 
 	result->characterRangeIntervals = PushArray(&GlobalArena, 256, interval);
 	bool shouldContinue = true;
 	int currentIndex = index;
-	uint8_t parsingState = ParseCharacterClassState::NOT_STARTED_CHAR_CLASS;
+	uint8_t parsingState = ParseCharacterClassState_NotStarted;
 	three_char_stack charsStack = {};
 
 	// todo: handle special stuff like \d etc here as well. also, \] is not counted as a closing bracket
-	while (shouldContinue && (currentIndex < pattern->length || parsingState == ParseCharacterClassState::CLOSING_BRACKET_GET_CHAR_CLASS)) {
+	while (shouldContinue && (currentIndex < pattern->length || parsingState == ParseCharacterClassState_ClosingBracketGet)) {
 		// printf("state: %d. '%s', consumed: %d, currentChar: %c\n", (int)parsingState, patternRef, (int)result->charsConsumed, patternRef[0]);
 		currentChar = charAt(pattern, currentIndex);
 
 		switch (parsingState) {
-			case ParseCharacterClassState::NOT_STARTED_CHAR_CLASS: {
+			case ParseCharacterClassState_NotStarted: {
 				if (currentChar != '[') {
 					result->hasError = true;
 					printf("No opening bracket ([) found\n");
@@ -241,10 +241,10 @@ parse_character_class_result parseCharacterClass(my_string *pattern, int index, 
 				}
 				++currentIndex;
 				++result->charsConsumed;
-				parsingState = ParseCharacterClassState::OPENING_BRACKET_GET_CHAR_CLASS;
+				parsingState = ParseCharacterClassState_OpeningBracketGet;
 			} break;
 
-			case ParseCharacterClassState::OPENING_BRACKET_GET_CHAR_CLASS: {
+			case ParseCharacterClassState_OpeningBracketGet: {
 				if (currentChar == '^') {
 					result->isNegativeClass = true;
 				} else { // -, ] are special if at the very beginning
@@ -253,12 +253,12 @@ parse_character_class_result parseCharacterClass(my_string *pattern, int index, 
 				}
 				++currentIndex;
 				++result->charsConsumed;
-				parsingState = ParseCharacterClassState::NORMAL_PARSING_CHAR_CLASS;
+				parsingState = ParseCharacterClassState_NormalParsing;
 			} break;
 
-			case ParseCharacterClassState::NORMAL_PARSING_CHAR_CLASS: {
+			case ParseCharacterClassState_NormalParsing: {
 				if (currentChar == ']') {
-					parsingState = ParseCharacterClassState::CLOSING_BRACKET_GET_CHAR_CLASS;
+					parsingState = ParseCharacterClassState_ClosingBracketGet;
 					++currentIndex;
 					++result->charsConsumed;
 					break;					
@@ -299,7 +299,7 @@ parse_character_class_result parseCharacterClass(my_string *pattern, int index, 
 				++result->charsConsumed;
 			} break;
 
-			case ParseCharacterClassState::CLOSING_BRACKET_GET_CHAR_CLASS: {
+			case ParseCharacterClassState_ClosingBracketGet: {
 				if (charsStack.hasLower && !addCharacterClassRange(result, &charsStack)) {
 					result->hasError = true;
 					printf("failed to add character class range\n");
@@ -317,7 +317,7 @@ parse_character_class_result parseCharacterClass(my_string *pattern, int index, 
 		};
 	}
 
-	if (parsingState != ParseCharacterClassState::CLOSING_BRACKET_GET_CHAR_CLASS) {
+	if (parsingState != ParseCharacterClassState_ClosingBracketGet) {
 		result->hasError = true;
 		printf("Reached impossible state: %d\n", (int)parsingState);
 	}
@@ -365,19 +365,19 @@ parse_special_character_result parseSpecialCharacter(my_string *pattern, int ind
 	parse_special_character_result result = {};
 
 	switch (charContext) {
-		case CharContext::CharContext_Regular: {
+		case CharContext_Regular: {
 			escapableCharacters = "()|.*+?{[0\\";
 
 			if (doesCharAtIndexMatchTestChar(pattern, index, '.')) {
 				result.specialChar = '.';
-				result.charType = SpecialChar::SpecialChar_Meta;
+				result.charType = SpecialChar_Meta;
 				result.charsConsumed = 1;
 				return result;
 			}
 		} break;
 
-		case CharContext::CharContext_CharacterClass: {
-			escapableCharacters = "]^0\\";
+		case CharContext_CharacterClass: {
+			escapableCharacters = "-]^0\\";
 		} break;
 
 		default: {
@@ -394,7 +394,7 @@ parse_special_character_result parseSpecialCharacter(my_string *pattern, int ind
 	for (int i = 0; i < strLen(metaCharacters); ++i) {
 		if (doesCharAtIndexMatchTestChar(pattern, index + 1, metaCharacters[i])) {
 			result.specialChar = metaCharacters[i];
-			result.charType = SpecialChar::SpecialChar_Meta;
+			result.charType = SpecialChar_Meta;
 			result.charsConsumed = 2;
 			return result;
 		}
@@ -403,7 +403,7 @@ parse_special_character_result parseSpecialCharacter(my_string *pattern, int ind
 	for (int i = 0; i < strLen(escapableCharacters); ++i) {
 		if (doesCharAtIndexMatchTestChar(pattern, index + 1, escapableCharacters[i])) {
 			result.specialChar = escapableCharacters[i];
-			result.charType = SpecialChar::SpecialChar_Literal;
+			result.charType = SpecialChar_Literal;
 			result.charsConsumed = 2;
 			return result;
 		}
@@ -462,7 +462,7 @@ regex_state_machine parseRegex(my_string *pattern)
 
 		if (characterClassResult.charsConsumed > 0) {
 			node = regex_node{
-				.type = RegexType::TYPE_CHAR_CLASS_WITH_LENGTH, 
+				.type = RegexType_CharClass, 
 				.isNegativeClass = characterClassResult.isNegativeClass,
 				.numIntervals = characterClassResult.numIntervals,
 				.minMatches = 1,
@@ -479,16 +479,16 @@ regex_state_machine parseRegex(my_string *pattern)
 			}
 
 			if (specialCharResult.charsConsumed > 0) {
-				if (specialCharResult.charType == SpecialChar::SpecialChar_Literal) {
+				if (specialCharResult.charType == SpecialChar_Literal) {
 					node = regex_node{
-						.type = RegexType::TYPE_REGULAR_CHAR_WITH_LENGTH, 
+						.type = RegexType_RegularChar, 
 						.comparisonChar = specialCharResult.specialChar, 
 						.minMatches = 1, 
 						.maxMatches = 1
 					};
 				} else {
 					node = regex_node{
-						.type = RegexType::TYPE_META_CHAR_WITH_LENGTH, 
+						.type = RegexType_MetaChar, 
 						.comparisonChar = specialCharResult.specialChar, 
 						.minMatches = 1, 
 						.maxMatches = 1
@@ -498,7 +498,7 @@ regex_state_machine parseRegex(my_string *pattern)
 				i = onePastLengthQuantifier - 1; // ++i when the loop ends would skip a char otherwise
 			} else {
 				node = regex_node{
-					.type = RegexType::TYPE_REGULAR_CHAR_WITH_LENGTH, 
+					.type = RegexType_RegularChar, 
 					.comparisonChar = currentChar, 
 					.minMatches = 1, 
 					.maxMatches = 1
@@ -563,13 +563,13 @@ match_result doesNodeMatch(regex_node *regexNode, char *testString) {
 	}
 	char currentChar = testString[0];
 
-	if (regexNode->type == RegexType::TYPE_REGULAR_CHAR_WITH_LENGTH) {
+	if (regexNode->type == RegexType_RegularChar) {
 		if (currentChar == regexNode->comparisonChar) {
 			result.matched = true;
 		}
 	}
 
-	if (regexNode->type == RegexType::TYPE_CHAR_CLASS_WITH_LENGTH) {
+	if (regexNode->type == RegexType_CharClass) {
 		bool matchedInterval = false;
 
 		for (uint32_t i = 0; i < regexNode->numIntervals; ++i) {
@@ -584,7 +584,7 @@ match_result doesNodeMatch(regex_node *regexNode, char *testString) {
 		result.matched = regexNode->isNegativeClass ? !matchedInterval : matchedInterval;
 	}
 
-	if (regexNode->type == RegexType::TYPE_META_CHAR_WITH_LENGTH) {
+	if (regexNode->type == RegexType_MetaChar) {
 		result.matched = matchMetaChar(regexNode->comparisonChar, testString[0]);
 	}
 	return result;
@@ -698,15 +698,17 @@ int main(void)
 	// char pattern[] = "[a-z]{0,100}+a";
 	// char pattern[] = ".*c";
 	// char pattern[] = "\\w+";
-	// char pattern[] = "\\d+";
-	char pattern[] = "\\{";
+	char pattern[] = "\\d+";
+	// char pattern[] = "\\{";
+	// char pattern[] = "\\[a?b?]";
+	// char pattern[] = "[ab\\]]";
 	char searchLines[][100] = {
 		"abcde",
 		"ab",
 		"abcabcd",
 		"aaaaabcaaabcaaaaaaaaaaaaab",
 		"-]",
-		"-]132[]11{["
+		"-]132[]11{[]"
 	};
 	int numLines = sizeof(searchLines) / sizeof(*searchLines);
 	my_string patternString = fromCString(&GlobalArena, pattern, strLen(pattern));
