@@ -53,7 +53,7 @@ void *PushSize_(memory_arena *arena, size_t size)
     uintptr_t startingOffset = (uintptr_t)(arena->buffer + arena->currentOffset);
     uintptr_t finalOffset = alignForward(startingOffset, DEFAULT_ALIGNMENT);
     finalOffset -= (uintptr_t)arena->buffer; // relative offset from the start
-	printf("alloc %llu at offset: %llu\n", size, finalOffset);
+	// printf("alloc %llu at offset: %llu\n", size, finalOffset);
 
     if (finalOffset + size > arena->bufferSize) {
     	printf("arena is out of memory\n");

@@ -112,7 +112,7 @@ struct parse_character_class_result
 struct three_char_stack
 {
 	bool hasLower;
-	char lower;
+	parse_token_result lower;
 	bool hasRange;
-	char upper;
+	parse_token_result upper;
 };
