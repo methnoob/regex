@@ -367,17 +367,17 @@ parse_custom_length_result parseLengthQuantifier(my_string *pattern, int index, 
 	return parseResult;
 }
 
-parse_special_character_result parseSpecialCharacter(my_string *pattern, int index, CharContext charContext)
+parse_token_result parseToken(my_string *pattern, int index, CharContext charContext)
 {
 	const char *escapableCharacters;
-	parse_special_character_result result = {};
+	parse_token_result result = {};
 
 	switch (charContext) {
 		case CharContext_Regular: {
 			escapableCharacters = "()|.*+?{[0\\";
 
 			if (doesCharAtIndexMatchTestChar(pattern, index, '.')) {
-				result.specialChar = '.';
+				result.token = '.';
 				result.charType = SpecialChar_Meta;
 				result.charsConsumed = 1;
 				return result;
@@ -396,12 +396,15 @@ parse_special_character_result parseSpecialCharacter(my_string *pattern, int ind
 	}
 
 	if (!doesCharAtIndexMatchTestChar(pattern, index, '\\')) {
+		result.token = charAt(pattern, index);
+		result.charType = SpecialChar_Literal;
+		result.charsConsumed = 1;
 		return result;
 	}
 
 	for (int i = 0; i < strLen(metaCharacters); ++i) {
 		if (doesCharAtIndexMatchTestChar(pattern, index + 1, metaCharacters[i])) {
-			result.specialChar = metaCharacters[i];
+			result.token = metaCharacters[i];
 			result.charType = SpecialChar_Meta;
 			result.charsConsumed = 2;
 			return result;
@@ -410,7 +413,7 @@ parse_special_character_result parseSpecialCharacter(my_string *pattern, int ind
 
 	for (int i = 0; i < strLen(escapableCharacters); ++i) {
 		if (doesCharAtIndexMatchTestChar(pattern, index + 1, escapableCharacters[i])) {
-			result.specialChar = escapableCharacters[i];
+			result.token = escapableCharacters[i];
 			result.charType = SpecialChar_Literal;
 			result.charsConsumed = 2;
 			return result;
@@ -431,7 +434,7 @@ regex_state_machine parseRegex(my_string *pattern)
 	regex_state_machine errorMachine = {};
 	errorMachine.hasError = true;
 
-	for (int i = 0; i < pattern->length; ++i) {
+	for (int i = 0; i < pattern->length;) {
 		regex_node node;
 		regex_node *previousNode = stateMachine.numNodes == 0 ? NULL : &stateMachine.regexNodes[stateMachine.numNodes - 1];
 
@@ -458,8 +461,7 @@ regex_state_machine parseRegex(my_string *pattern)
 			previousNode->isGreedy = lengthResult.isGreedy;
 			previousNode->hasLengthSpecified = true;
 
-			int onePastLengthQuantifier = i + lengthResult.charsConsumed;
-			i = onePastLengthQuantifier - 1; // ++i when the loop ends would skip a char otherwise
+			i += lengthResult.charsConsumed;
 			continue;
 		}
 		parse_character_class_result characterClassResult = parseCharacterClass(pattern, i, &stateMachine);
@@ -477,42 +479,36 @@ regex_state_machine parseRegex(my_string *pattern)
 				.minMatches = 1,
 				.maxMatches = 1,
 			};
-			int onePastLengthQuantifier = i + characterClassResult.charsConsumed;
-			i = onePastLengthQuantifier - 1; // ++i when the loop ends would skip a char otherwise
-		} else {
-			parse_special_character_result specialCharResult = parseSpecialCharacter(pattern, i, CharContext_Regular);
-
-			if (specialCharResult.hasError) {
-				return errorMachine;
-			}
-
-			if (specialCharResult.charsConsumed > 0) {
-				if (specialCharResult.charType == SpecialChar_Literal) {
-					node = regex_node{
-						.type = RegexType_RegularChar, 
-						.comparisonChar = specialCharResult.specialChar, 
-						.minMatches = 1, 
-						.maxMatches = 1
-					};
-				} else {
-					node = regex_node{
-						.type = RegexType_MetaChar, 
-						.comparisonChar = specialCharResult.specialChar, 
-						.minMatches = 1, 
-						.maxMatches = 1
-					};
-				}
-				int onePastLengthQuantifier = i + specialCharResult.charsConsumed;
-				i = onePastLengthQuantifier - 1; // ++i when the loop ends would skip a char otherwise
-			} else {
-				node = regex_node{
-					.type = RegexType_RegularChar, 
-					.comparisonChar = currentChar, 
-					.minMatches = 1, 
-					.maxMatches = 1
-				};
-			}
+			i += characterClassResult.charsConsumed;
+			continue;
 		}
+		parse_token_result tokenResult = parseToken(pattern, i, CharContext_Regular);
+
+		if (tokenResult.hasError) {
+			return errorMachine;
+		}
+
+		if (tokenResult.charsConsumed == 0) {
+			printf("should always match a literal or escaped char\n");
+			return errorMachine;
+		}
+
+		if (tokenResult.charType == SpecialChar_Literal) {
+			node = regex_node{
+				.type = RegexType_RegularChar, 
+				.comparisonChar = tokenResult.token, 
+				.minMatches = 1, 
+				.maxMatches = 1
+			};
+		} else {
+			node = regex_node{
+				.type = RegexType_MetaChar, 
+				.comparisonChar = tokenResult.token, 
+				.minMatches = 1, 
+				.maxMatches = 1
+			};
+		}
+		i += tokenResult.charsConsumed;
 		addNodeToStateMachine(&node, &stateMachine);
 	}
 	printStateMachine(&stateMachine);

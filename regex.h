@@ -38,10 +38,10 @@ enum ParseCharacterClassState: uint8_t
 	ParseCharacterClassState_ClosingBracketGet
 };
 
-struct parse_special_character_result
+struct parse_token_result
 {
 	bool hasError;
-	char specialChar;
+	char token;
 	SpecialCharType charType;
 	uint8_t charsConsumed;
 };
@@ -101,8 +101,12 @@ struct parse_character_class_result
 	bool hasError;
 	uint32_t charsConsumed;
 	bool isNegativeClass;
+
 	uint32_t numIntervals;
 	interval *characterRangeIntervals;
+
+	uint32_t numMetaChars;
+	char *metaChars;
 };
 
 struct three_char_stack
