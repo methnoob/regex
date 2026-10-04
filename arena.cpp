@@ -21,7 +21,7 @@ void initializeArena(memory_arena *arena, size_t bufferSize, uint8_t *base)
 }
 
 #define DEFAULT_ALIGNMENT (2 * sizeof(void *))
-#define PushSize(arena, type) (type *)PushSize_(arena, sizeof(type))
+#define PushStruct(arena, type) (type *)PushSize_(arena, sizeof(type))
 #define PushArray(arena, Count, type) (type *)PushSize_(arena, (Count) * sizeof(type))
 
 bool isPowerOfTwo(uintptr_t x)

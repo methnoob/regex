@@ -452,24 +452,25 @@ parse_custom_length_result parseLengthQuantifier(my_string *pattern, int index, 
 	return parseResult;
 }
 
-regex_state_machine parseRegex(my_string *pattern)
+regex_state_machine *parseRegex(my_string *pattern)
 {
-	regex_state_machine stateMachine = {};
-	stateMachine.originalPattern = pattern;
-	stateMachine.regexNodes = PushArray(&GlobalArena, 256, regex_node);
+	regex_state_machine *errorMachine = PushStruct(&GlobalArena, regex_state_machine);
+	errorMachine->hasError = true;
 
-	regex_state_machine errorMachine = {};
-	errorMachine.hasError = true;
+	regex_state_machine *stateMachine = PushStruct(&GlobalArena, regex_state_machine);
+	stateMachine->originalPattern = pattern;
+	stateMachine->regexNodes = PushArray(&GlobalArena, 256, regex_node);
+
 
 	for (int i = 0; i < pattern->length;) {
 		regex_node node;
-		regex_node *previousNode = stateMachine.numNodes == 0 ? NULL : &stateMachine.regexNodes[stateMachine.numNodes - 1];
+		regex_node *previousNode = stateMachine->numNodes == 0 ? NULL : &stateMachine->regexNodes[stateMachine->numNodes - 1];
 
 		char currentChar = charAt(pattern, i);
 		// todo: +/-ive lookahead/backs
 		// todo: groups :skull:
 
-		parse_custom_length_result lengthResult = parseLengthQuantifier(pattern, i, &stateMachine);
+		parse_custom_length_result lengthResult = parseLengthQuantifier(pattern, i, stateMachine);
 
 		if (lengthResult.hasError) {
 			return errorMachine;
@@ -490,7 +491,7 @@ regex_state_machine parseRegex(my_string *pattern)
 			i += lengthResult.charsConsumed;
 			continue;
 		}
-		parse_character_class_result characterClassResult = parseCharacterClass(pattern, i, &stateMachine);
+		parse_character_class_result characterClassResult = parseCharacterClass(pattern, i, stateMachine);
 
 		if (characterClassResult.hasError) {
 			return errorMachine;
@@ -537,9 +538,9 @@ regex_state_machine parseRegex(my_string *pattern)
 			}
 			i += tokenResult.charsConsumed;
 		}
-		addNodeToStateMachine(&node, &stateMachine);
+		addNodeToStateMachine(&node, stateMachine);
 	}
-	printStateMachine(&stateMachine);
+	printStateMachine(stateMachine);
 	return stateMachine;
 }
 
@@ -651,6 +652,135 @@ void resetStateMachine(regex_state_machine *stateMachine) {
 	}
 }
 
+void moveToNextNode(state_machine_partial *currentUniverseMatch) {
+	++currentUniverseMatch->regexNodeIndex;
+	currentUniverseMatch->numMatchesForCurrentNode = 0;
+	currentUniverseMatch->hasBeenSplit = false;
+}
+
+bool nodeMatches(regex_state_machine *stateMachine, state_machine_partial *currentUniverseMatch, my_string *testString)
+{
+	regex_node *relevantNode = stateMachine->regexNodes + currentUniverseMatch->regexNodeIndex;
+
+	if (currentUniverseMatch->matchEnd >= testString->length) {
+		return false;
+	}
+	return doesNodeMatch(relevantNode, testString->cstr + currentUniverseMatch->matchEnd).matched;
+}
+
+void printStateMachinePartial(state_machine_partial *currentUniverseMatch)
+{
+	printf("matchStart: %d, matchEnd: %d, numMatchesForCurrentNode: %d, regexNodeIndex: %d\n", 
+		(int)currentUniverseMatch->matchStart,
+		(int)currentUniverseMatch->matchEnd,
+		(int)currentUniverseMatch->numMatchesForCurrentNode,
+		(int)currentUniverseMatch->regexNodeIndex
+	);
+}
+
+void processString2(my_string *testString, int matchStart, regex_state_machine *stateMachine)
+{
+	if (stateMachine->numNodes == 0) {
+		return;
+	}
+	char *testStringRef = testString->cstr + matchStart;
+	// for super large test strings / pathological regexes, this should be a dynamic arr. 
+	// but we don't care about that right now
+	int maxAlternateStates = 100;
+	state_machine_partial *alternateUniverses = PushArray(&GlobalArena, maxAlternateStates, state_machine_partial);
+	alternateUniverses[0].matchStart = matchStart;
+	alternateUniverses[0].matchEnd = matchStart;
+	int numValidStates = 1;
+
+	while (true) {
+		if (numValidStates == 0) {
+			printf("no valid states left, exiting\n");
+			break;
+		}
+		int startingNumValidStates = numValidStates;
+		int numFinishedStates = 0;
+		printf("\n\n\n\n\n");
+		printf("startingNumValidStates: %d", startingNumValidStates);
+
+		for (int i = 0; i < startingNumValidStates; ++i) {
+			if (numValidStates > maxAlternateStates) {
+				printf("Ran out of alternate universe states oof\n");
+				numValidStates = 0;
+				break;
+			}
+			printf("\n");
+			state_machine_partial *currentUniverseMatch = alternateUniverses + i;
+			printStateMachinePartial(currentUniverseMatch);
+
+			if (currentUniverseMatch->regexNodeIndex >= stateMachine->numNodes) {
+				++numFinishedStates;
+				continue;
+			}
+			regex_node *relevantNode = stateMachine->regexNodes + currentUniverseMatch->regexNodeIndex;
+
+			// if we haven't reached the min thresh, we try to match the current node
+			if (currentUniverseMatch->numMatchesForCurrentNode < relevantNode->minMatches) {
+				printf("have not reached min yet\n");
+				// todo: replace with a node_match_result when groups are implemented
+				if (!nodeMatches(stateMachine, currentUniverseMatch, testString)) {
+					// remove this node from consideration, replace it with the last node from the array
+					--startingNumValidStates;
+					--numValidStates;
+					state_machine_partial *lastUniverse = alternateUniverses + startingNumValidStates;
+					*currentUniverseMatch = *lastUniverse;
+					--i;
+					*lastUniverse = {};
+					continue;
+				}
+				++currentUniverseMatch->matchEnd;
+				++currentUniverseMatch->numMatchesForCurrentNode;
+				continue;
+			}
+
+			// after reaching the max, move to the next node
+			if ((relevantNode->maxMatches > 0) && currentUniverseMatch->numMatchesForCurrentNode == relevantNode->maxMatches) {
+				printf("maxed out, moving on\n");
+				moveToNextNode(currentUniverseMatch);
+				continue;
+			}
+			// now we are inside the [min, max) range
+
+			if (!nodeMatches(stateMachine, currentUniverseMatch, testString)) {
+				printf("did not match inside range, moving on\n");
+				moveToNextNode(currentUniverseMatch);
+				continue;
+			}
+			// create an alternate universe and move that to the next node
+			state_machine_partial currentMatchCopy = *currentUniverseMatch;
+
+
+			if (!currentUniverseMatch->hasBeenSplit) {
+				printf("matched, creating alternate universe\n");
+				++currentUniverseMatch->matchEnd;
+				++currentUniverseMatch->numMatchesForCurrentNode;
+				currentMatchCopy.hasBeenSplit = true; // only split once
+				alternateUniverses[numValidStates++] = currentMatchCopy;
+				moveToNextNode(&currentMatchCopy);
+			} else {
+				printf("already split, not creating alternate universe\n");
+				moveToNextNode(currentUniverseMatch);
+			}
+			continue;
+		}
+
+		if (numFinishedStates == numValidStates) {
+			printf("all states done, exiting\n");
+			break;
+		}
+	}
+	// todo: find greediest match?
+
+	for (int i = 0; i < numValidStates; ++i) {
+		state_machine_partial *currentUniverseMatch = alternateUniverses + i;
+		printf("matched: '%s' from %d to %d. Leftover string: '%s'\n", testString->cstr, currentUniverseMatch->matchStart, currentUniverseMatch->matchEnd, testString->cstr + currentUniverseMatch->matchEnd);
+	}
+}
+
 void processString(my_string *testString, regex_state_machine *stateMachine)
 {
 	if (stateMachine->numNodes == 0) {
@@ -743,23 +873,32 @@ int main(void)
 	// char pattern[] = "[ab\\]]+";
 	// char pattern[] = "[[\\]a-z\\-]+";
 	// char pattern[] = "[\\^\\d]+";
-	char pattern[] = "[\\^\\D]+";
+	// char pattern[] = "[\\^\\D]+";
+	// char pattern[] = "\\.*c";
+	// char pattern[] = "a*[a-z]{0,100}a";
+	char pattern[] = ".*.*";
 	char searchLines[][100] = {
-		"abcde",
-		"ab",
-		"abcabcd",
+		// "abcde",
+		// "ab",
+		// "abcabcd",
 		"aaaaabcaaabcaaaaaaaaaaaaab",
-		"-]",
-		"-]132[]11{[]",
-		"[a-z]^"
+		// "-]",
+		// "-]132[]11{[]",
+		// "[a-z]^",
+		// "...c",
+		"a"
 	};
 	int numLines = sizeof(searchLines) / sizeof(*searchLines);
 	my_string patternString = fromCString(&GlobalArena, pattern, strLen(pattern));
-	regex_state_machine stateMachine = parseRegex(&patternString);
+	regex_state_machine *stateMachine = parseRegex(&patternString);
 
 	for (int i = 0; i < numLines; ++i) {
 		my_string testString = fromCString(&GlobalArena, searchLines[i], strLen(searchLines[i]));
-		processString(&testString, &stateMachine);
+
+		for (int j = 0; j < testString.length; ++j) {
+			processString2(&testString, j, stateMachine);
+		}
+		// processString(&testString, stateMachine);
 	}
 	printf("\n\nmemory used: %llu bytes\n\n", GlobalArena.currentOffset);
 	return 0;

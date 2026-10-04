@@ -116,3 +116,10 @@ struct three_char_stack
 	bool hasRange;
 	parse_token_result upper;
 };
+
+struct state_machine_partial
+{
+	bool hasBeenSplit;
+	int matchStart, matchEnd;
+	uint32_t numMatchesForCurrentNode, regexNodeIndex;
+};
