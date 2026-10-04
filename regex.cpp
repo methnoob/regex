@@ -658,14 +658,12 @@ void moveToNextNode(state_machine_partial *currentUniverseMatch) {
 	currentUniverseMatch->hasBeenSplit = false;
 }
 
-bool nodeMatches(regex_state_machine *stateMachine, state_machine_partial *currentUniverseMatch, my_string *testString)
+bool nodeMatches(regex_node *regexNode, state_machine_partial *currentUniverseMatch, my_string *testString)
 {
-	regex_node *relevantNode = stateMachine->regexNodes + currentUniverseMatch->regexNodeIndex;
-
 	if (currentUniverseMatch->matchEnd >= testString->length) {
 		return false;
 	}
-	return doesNodeMatch(relevantNode, testString->cstr + currentUniverseMatch->matchEnd).matched;
+	return doesNodeMatch(regexNode, testString->cstr + currentUniverseMatch->matchEnd).matched;
 }
 
 void printStateMachinePartial(state_machine_partial *currentUniverseMatch)
@@ -678,117 +676,101 @@ void printStateMachinePartial(state_machine_partial *currentUniverseMatch)
 	);
 }
 
-state_machine_match processString2(my_string *testString, int matchStart, regex_state_machine *stateMachine)
+state_machine_match matchStringToStateMachine(regex_state_machine *stateMachine, uint32_t startingNode, my_string *testString, int matchStart)
 {
 	// todo: handle greedy nodes (e.g. a*+)
-	if (stateMachine->numNodes == 0) {
-		return state_machine_match{};
+	if (startingNode == stateMachine->numNodes) {
+		// printf("hehehehe\n");
+		return state_machine_match{true, matchStart, matchStart};
 	}
-	// for super large test strings / pathological regexes, this should be a dynamic arr. 
+	regex_node *currentNode = stateMachine->regexNodes + startingNode;
+	// printf("testing match of '%s' from %d against node: \n", testString->cstr, matchStart);
+	// printRegexNode(currentNode);
+	// for super large test strings / pathological regexes, this should be a dynamic arr?
 	// but we don't care about that right now
-	int maxAlternateStates = 100000;
+	size_t arenaOffset = GlobalArena.currentOffset;
+	size_t maxAlternateStates = testString->length;
 	state_machine_partial *alternateUniverses = PushArray(&GlobalArena, maxAlternateStates, state_machine_partial);
-	alternateUniverses[0].matchStart = matchStart;
-	alternateUniverses[0].matchEnd = matchStart;
-	int numValidStates = 1;
+	state_machine_match *matches = PushArray(&GlobalArena, maxAlternateStates, state_machine_match);
+	int numValidStates = 0;
+
+	state_machine_partial greedyPartial = {};
+	greedyPartial.matchStart = matchStart;
+	greedyPartial.matchEnd = matchStart;
+	greedyPartial.numMatchesForCurrentNode = 0;
+	greedyPartial.regexNodeIndex = startingNode;
 
 	while (true) {
-		if (numValidStates == 0) {
-			printf("no valid states left, exiting\n");
+		if (currentNode->maxMatches > 0 && greedyPartial.numMatchesForCurrentNode == currentNode->maxMatches) {
 			break;
 		}
-		int startingNumValidStates = numValidStates;
-		int numFinishedStates = 0;
-		printf("\n\n\n\n\n");
-		printf("startingNumValidStates: %d", startingNumValidStates);
 
-		for (int i = 0; i < startingNumValidStates; ++i) {
-			if (numValidStates > maxAlternateStates) {
-				printf("Ran out of alternate universe states oof\n");
-				numValidStates = 0;
-				break;
-			}
-			printf("\n");
-			state_machine_partial *currentUniverseMatch = alternateUniverses + i;
-			printStateMachinePartial(currentUniverseMatch);
-
-			if (currentUniverseMatch->regexNodeIndex >= stateMachine->numNodes) {
-				++numFinishedStates;
-				continue;
-			}
-			regex_node *relevantNode = stateMachine->regexNodes + currentUniverseMatch->regexNodeIndex;
-
-			// if we haven't reached the min thresh, we try to match the current node
-			if (currentUniverseMatch->numMatchesForCurrentNode < relevantNode->minMatches) {
-				printf("have not reached min yet\n");
-				// todo: replace with a node_match_result when groups are implemented
-				if (!nodeMatches(stateMachine, currentUniverseMatch, testString)) {
-					// remove this node from consideration, replace it with the last node from the array
-					--startingNumValidStates;
-					--numValidStates;
-					state_machine_partial *lastUniverse = alternateUniverses + startingNumValidStates;
-					*currentUniverseMatch = *lastUniverse;
-					--i;
-					*lastUniverse = {};
-					continue;
-				}
-				++currentUniverseMatch->matchEnd;
-				++currentUniverseMatch->numMatchesForCurrentNode;
-				continue;
-			}
-
-			// after reaching the max, move to the next node
-			if ((relevantNode->maxMatches > 0) && currentUniverseMatch->numMatchesForCurrentNode == relevantNode->maxMatches) {
-				printf("maxed out, moving on\n");
-				moveToNextNode(currentUniverseMatch);
-				continue;
-			}
-			// now we are inside the [min, max) range
-
-			if (!nodeMatches(stateMachine, currentUniverseMatch, testString)) {
-				printf("did not match inside range, moving on\n");
-				moveToNextNode(currentUniverseMatch);
-				continue;
-			}
-			// create an alternate universe and move that to the next node
-			state_machine_partial currentMatchCopy = *currentUniverseMatch;
-
-
-			if (!currentUniverseMatch->hasBeenSplit) {
-				printf("matched, creating alternate universe\n");
-				++currentUniverseMatch->matchEnd;
-				++currentUniverseMatch->numMatchesForCurrentNode;
-				currentMatchCopy.hasBeenSplit = true; // only split once
-				alternateUniverses[numValidStates++] = currentMatchCopy;
-				moveToNextNode(&currentMatchCopy);
-			} else {
-				printf("already split, not creating alternate universe\n");
-				moveToNextNode(currentUniverseMatch);
-			}
+		if (nodeMatches(currentNode, &greedyPartial, testString)) {
+			++greedyPartial.matchEnd;
+			++greedyPartial.numMatchesForCurrentNode;
 			continue;
 		}
+		break;
+	}
+	// printf("num matches: %d\n", greedyPartial.numMatchesForCurrentNode);
+	int minMatches = currentNode->minMatches;
+	int maxMatches = (currentNode->maxMatches > 0) ? min(greedyPartial.numMatchesForCurrentNode, currentNode->maxMatches) : greedyPartial.numMatchesForCurrentNode;
 
-		if (numFinishedStates == numValidStates) {
-			printf("all states done, exiting\n");
-			break;
+	if (currentNode->isGreedy) {
+		minMatches = maxMatches;
+	}
+
+	for (int i = minMatches; i <= maxMatches; ++i) {
+		// printf("here. i: %d\n", i);
+		state_machine_partial partial = {};
+		partial.matchStart = matchStart;
+		partial.matchEnd = matchStart + i;
+
+		if (currentNode->minMatches <= i && ((currentNode->maxMatches == 0) || i <= currentNode->maxMatches)) {
+			// printf("adding partial\n");
+			alternateUniverses[numValidStates++] = partial;
 		}
 	}
 
 	if (numValidStates == 0) {
+		GlobalArena.currentOffset = arenaOffset; // give back temp memory
 		return state_machine_match{};
 	}
-	state_machine_partial *longestMatch = alternateUniverses;
-	// todo: find greediest match, and advance the starting index by the amount matched. (+1 for a vacuous match)
+	state_machine_match noMatch = {};
+	state_machine_match *longestMatch = &noMatch;
 
 	for (int i = 0; i < numValidStates; ++i) {
-		state_machine_partial *currentUniverseMatch = alternateUniverses + i;
+		state_machine_partial *currentPartial = alternateUniverses + i;
+		state_machine_match match = matchStringToStateMachine(stateMachine, startingNode + 1, testString, currentPartial->matchEnd);
 
-		if (currentUniverseMatch->matchEnd > longestMatch->matchEnd) {
-			longestMatch = currentUniverseMatch;
+		if (match.matched) {
+			state_machine_match *currentMatch = matches + i;
+			currentMatch->matchStart = matchStart;
+			currentMatch->matchEnd = match.matchEnd;
+			currentMatch->matched = true;
+
+			if (currentMatch->matchEnd - currentMatch->matchStart > longestMatch->matchEnd - longestMatch->matchStart) {
+				longestMatch = currentMatch;
+			}
 		}
 	}
-	printf("matched: '%s' from %d to %d. Leftover string: '%s'\n", testString->cstr, longestMatch->matchStart, longestMatch->matchEnd, testString->cstr + longestMatch->matchEnd);
-	return state_machine_match{true, longestMatch->matchStart, longestMatch->matchEnd};
+	state_machine_match result = {};
+
+	if (longestMatch->matched) {
+		result = state_machine_match{true, longestMatch->matchStart, longestMatch->matchEnd};
+	}
+	GlobalArena.currentOffset = arenaOffset; // give back temp memory
+	return result;
+}
+
+state_machine_match processString2(my_string *testString, int matchStart, regex_state_machine *stateMachine)
+{
+	state_machine_match result = matchStringToStateMachine(stateMachine, 0, testString, matchStart);
+
+	if (result.matched) {
+		printf("matched: '%s' from %d to %d. Leftover string: '%s'\n", testString->cstr, result.matchStart, result.matchEnd, testString->cstr + result.matchEnd);
+	}
+	return result;
 }
 
 void processString(my_string *testString, regex_state_machine *stateMachine)
@@ -892,9 +874,9 @@ int main(void)
 	// char pattern[] = "\\{";
 	// char pattern[] = "\\[a?b?]";
 	// char pattern[] = "[ab\\]]+";
-	// char pattern[] = "[[\\]a-z\\-]+";
+	char pattern[] = "[[\\]a-z\\-]+";
 	// char pattern[] = "[\\^\\d]+";
-	char pattern[] = "[\\^\\D]+";
+	// char pattern[] = "[\\^\\D]+";
 	// char pattern[] = "\\.*c";
 	// char pattern[] = "a*[a-z]{0,100}a";
 	// char pattern[] = ".*.*";
@@ -916,7 +898,18 @@ int main(void)
 
 	for (int i = 0; i < numLines; ++i) {
 		my_string testString = fromCString(&GlobalArena, searchLines[i], strLen(searchLines[i]));
-		processString(&testString, stateMachine);
+
+		for (int j = 0; j < testString.length;) {
+			state_machine_match match = processString2(&testString, j, stateMachine);
+			// printf("string: '%s', j: %d, matched: %d, matchStart: %d, matchEnd: %d\n", testString.cstr, j, (int)match.matched, match.matchStart, match.matchEnd);
+
+			if (!match.matched || match.matchEnd == j) {
+				++j;
+				continue;
+			}
+			j = match.matchEnd;
+		}
+		// processString(&testString, stateMachine);
 	}
 	printf("\n\nmemory used: %llu bytes\n\n", GlobalArena.currentOffset);
 	return 0;
