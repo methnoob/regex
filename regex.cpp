@@ -653,9 +653,7 @@ void resetStateMachine(regex_state_machine *stateMachine) {
 }
 
 void moveToNextNode(state_machine_partial *currentUniverseMatch) {
-	++currentUniverseMatch->regexNodeIndex;
 	currentUniverseMatch->numMatchesForCurrentNode = 0;
-	currentUniverseMatch->hasBeenSplit = false;
 }
 
 bool nodeMatches(regex_node *regexNode, state_machine_partial *currentUniverseMatch, my_string *testString)
@@ -668,11 +666,10 @@ bool nodeMatches(regex_node *regexNode, state_machine_partial *currentUniverseMa
 
 void printStateMachinePartial(state_machine_partial *currentUniverseMatch)
 {
-	printf("matchStart: %d, matchEnd: %d, numMatchesForCurrentNode: %d, regexNodeIndex: %d\n", 
+	printf("matchStart: %d, matchEnd: %d, numMatchesForCurrentNode: %d\n", 
 		(int)currentUniverseMatch->matchStart,
 		(int)currentUniverseMatch->matchEnd,
-		(int)currentUniverseMatch->numMatchesForCurrentNode,
-		(int)currentUniverseMatch->regexNodeIndex
+		(int)currentUniverseMatch->numMatchesForCurrentNode
 	);
 }
 
@@ -698,7 +695,6 @@ state_machine_match matchStringToStateMachine(regex_state_machine *stateMachine,
 	greedyPartial.matchStart = matchStart;
 	greedyPartial.matchEnd = matchStart;
 	greedyPartial.numMatchesForCurrentNode = 0;
-	greedyPartial.regexNodeIndex = startingNode;
 
 	while (true) {
 		if (currentNode->maxMatches > 0 && greedyPartial.numMatchesForCurrentNode == currentNode->maxMatches) {
@@ -874,11 +870,11 @@ int main(void)
 	// char pattern[] = "\\{";
 	// char pattern[] = "\\[a?b?]";
 	// char pattern[] = "[ab\\]]+";
-	char pattern[] = "[[\\]a-z\\-]+";
+	// char pattern[] = "[[\\]a-z\\-]+";
 	// char pattern[] = "[\\^\\d]+";
 	// char pattern[] = "[\\^\\D]+";
 	// char pattern[] = "\\.*c";
-	// char pattern[] = "a*[a-z]{0,100}a";
+	char pattern[] = "a*[a-z]{0,100}a";
 	// char pattern[] = ".*.*";
 	char searchLines[][100] = {
 		"abcde",
@@ -890,7 +886,7 @@ int main(void)
 		"[a-z]^",
 		"...c",
 		"a",
-		"a\nb"
+		// "a\nb"
 	};
 	int numLines = sizeof(searchLines) / sizeof(*searchLines);
 	my_string patternString = fromCString(&GlobalArena, pattern, strLen(pattern));

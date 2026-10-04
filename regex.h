@@ -119,9 +119,8 @@ struct three_char_stack
 
 struct state_machine_partial
 {
-	bool hasBeenSplit;
 	int matchStart, matchEnd;
-	uint32_t numMatchesForCurrentNode, regexNodeIndex;
+	uint32_t numMatchesForCurrentNode;
 };
 
 struct state_machine_match
