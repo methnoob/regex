@@ -123,3 +123,9 @@ struct state_machine_partial
 	int matchStart, matchEnd;
 	uint32_t numMatchesForCurrentNode, regexNodeIndex;
 };
+
+struct state_machine_match
+{
+	bool matched;
+	int matchStart, matchEnd;
+};

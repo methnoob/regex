@@ -678,15 +678,15 @@ void printStateMachinePartial(state_machine_partial *currentUniverseMatch)
 	);
 }
 
-void processString2(my_string *testString, int matchStart, regex_state_machine *stateMachine)
+state_machine_match processString2(my_string *testString, int matchStart, regex_state_machine *stateMachine)
 {
+	// todo: handle greedy nodes (e.g. a*+)
 	if (stateMachine->numNodes == 0) {
-		return;
+		return state_machine_match{};
 	}
-	char *testStringRef = testString->cstr + matchStart;
 	// for super large test strings / pathological regexes, this should be a dynamic arr. 
 	// but we don't care about that right now
-	int maxAlternateStates = 100;
+	int maxAlternateStates = 100000;
 	state_machine_partial *alternateUniverses = PushArray(&GlobalArena, maxAlternateStates, state_machine_partial);
 	alternateUniverses[0].matchStart = matchStart;
 	alternateUniverses[0].matchEnd = matchStart;
@@ -773,12 +773,22 @@ void processString2(my_string *testString, int matchStart, regex_state_machine *
 			break;
 		}
 	}
-	// todo: find greediest match?
+
+	if (numValidStates == 0) {
+		return state_machine_match{};
+	}
+	state_machine_partial *longestMatch = alternateUniverses;
+	// todo: find greediest match, and advance the starting index by the amount matched. (+1 for a vacuous match)
 
 	for (int i = 0; i < numValidStates; ++i) {
 		state_machine_partial *currentUniverseMatch = alternateUniverses + i;
-		printf("matched: '%s' from %d to %d. Leftover string: '%s'\n", testString->cstr, currentUniverseMatch->matchStart, currentUniverseMatch->matchEnd, testString->cstr + currentUniverseMatch->matchEnd);
+
+		if (currentUniverseMatch->matchEnd > longestMatch->matchEnd) {
+			longestMatch = currentUniverseMatch;
+		}
 	}
+	printf("matched: '%s' from %d to %d. Leftover string: '%s'\n", testString->cstr, longestMatch->matchStart, longestMatch->matchEnd, testString->cstr + longestMatch->matchEnd);
+	return state_machine_match{true, longestMatch->matchStart, longestMatch->matchEnd};
 }
 
 void processString(my_string *testString, regex_state_machine *stateMachine)
@@ -792,17 +802,22 @@ void processString(my_string *testString, regex_state_machine *stateMachine)
 
 	while (*testStringRef) {
 		bool matchedAllNodes = true;
+		regex_node *previousNode = 0;
 
 		for (uint32_t i = 0; i < stateMachine->numNodes && matchedAllNodes; ++i) {
 			regex_node *currentNode = &stateMachine->regexNodes[i];
-			regex_node *previousNode = (i > 0) ? &stateMachine->regexNodes[i - 1] : NULL;
 			match_result matchResult = doesNodeMatch(currentNode, testStringRef);
 			// printRegexNode(currentNode);
+			// printRegexNode(previousNode);
 
 			if (!matchResult.matched) {
 				if (areLengthNodeMatchesInRange(currentNode)) {
+					if (currentNode->numMatches > 0) {
+						previousNode = currentNode; // if a node matches with 0, we don't need to backtrack by 1
+					}
 					continue; // move to the next node
 				} else if (canNodeBeBacktracked(previousNode)) {
+					// printf("backtracking:\n");
 					// printf("back tracking node: \n");
 					// printRegexNode(previousNode);
 					// printRegexNode(currentNode);
@@ -811,6 +826,11 @@ void processString(my_string *testString, regex_state_machine *stateMachine)
 					--testStringRef;
 					--previousNode->numMatches;
 					--i;
+
+					// continue the backtracking to the previous node
+					if (previousNode->numMatches == 0 && previousNode != stateMachine->regexNodes) {
+						--previousNode;
+					}
 					continue;
 				}
 				matchedAllNodes = false;
@@ -829,6 +849,7 @@ void processString(my_string *testString, regex_state_machine *stateMachine)
 
 			if (areLengthNodeMatchesMaxedOut(currentNode)) { // greedy
 				// printf("node maxed out, moving ahead\n");
+				previousNode = currentNode;
 				continue; // move to the next node
 			} else { // need to at least replay node till matches are in range. if ungreedy, it would be !areLengthNodeMatchesInRange
 				// printf("replaying node\n");
@@ -873,20 +894,21 @@ int main(void)
 	// char pattern[] = "[ab\\]]+";
 	// char pattern[] = "[[\\]a-z\\-]+";
 	// char pattern[] = "[\\^\\d]+";
-	// char pattern[] = "[\\^\\D]+";
+	char pattern[] = "[\\^\\D]+";
 	// char pattern[] = "\\.*c";
 	// char pattern[] = "a*[a-z]{0,100}a";
-	char pattern[] = ".*.*";
+	// char pattern[] = ".*.*";
 	char searchLines[][100] = {
-		// "abcde",
-		// "ab",
-		// "abcabcd",
+		"abcde",
+		"ab",
+		"abcabcd",
 		"aaaaabcaaabcaaaaaaaaaaaaab",
-		// "-]",
-		// "-]132[]11{[]",
-		// "[a-z]^",
-		// "...c",
-		"a"
+		"-]",
+		"-]132[]11{[]",
+		"[a-z]^",
+		"...c",
+		"a",
+		"a\nb"
 	};
 	int numLines = sizeof(searchLines) / sizeof(*searchLines);
 	my_string patternString = fromCString(&GlobalArena, pattern, strLen(pattern));
@@ -894,11 +916,7 @@ int main(void)
 
 	for (int i = 0; i < numLines; ++i) {
 		my_string testString = fromCString(&GlobalArena, searchLines[i], strLen(searchLines[i]));
-
-		for (int j = 0; j < testString.length; ++j) {
-			processString2(&testString, j, stateMachine);
-		}
-		// processString(&testString, stateMachine);
+		processString(&testString, stateMachine);
 	}
 	printf("\n\nmemory used: %llu bytes\n\n", GlobalArena.currentOffset);
 	return 0;
