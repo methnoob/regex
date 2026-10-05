@@ -2,7 +2,8 @@ enum RegexType: uint8_t
 {
 	RegexType_RegularChar = 1,
 	RegexType_CharClass = 2,
-	RegexType_MetaChar = 3
+	RegexType_MetaChar = 3,
+	RegexType_Group = 4
 };
 
 enum SpecialCharType: uint8_t
@@ -55,6 +56,16 @@ struct parse_custom_length_result
 	uint32_t maxMatches;
 };
 
+struct regex_state_machine;
+
+struct parse_group_result
+{
+	bool hasError;
+	uint32_t charsConsumed;
+	uint32_t numBranches;
+	regex_state_machine *groupBranches;
+};
+
 struct interval
 {
 	uint8_t min;
@@ -76,6 +87,9 @@ struct regex_node
 	uint32_t numMetaChars;
 	char *metaChars;
 
+	uint32_t numBranches;
+	regex_state_machine *groupBranches;
+
 	uint32_t minMatches;
 	uint32_t maxMatches;
 	uint32_t numMatches;
@@ -85,7 +99,7 @@ struct regex_node
 
 struct match_result
 {
-	bool matched;
+	uint32_t numCharsMatched;
 };
 
 struct regex_state_machine
@@ -128,3 +142,40 @@ struct state_machine_match
 	bool matched;
 	int matchStart, matchEnd;
 };
+
+enum RegexParserState: uint8_t
+{
+	RegexParserState_Normal,
+	RegexParserState_Group,
+	RegexParserState_Impossible,
+};
+
+struct regex_parser_state
+{
+	int currentIndex;
+	int stackLen;
+	RegexParserState stateStack[256];
+};
+
+void pushState(regex_parser_state *parserState, RegexParserState state)
+{
+	parserState->stateStack[parserState->stackLen++] = state;
+}
+
+void popState(regex_parser_state *parserState)
+{
+	--parserState->stackLen;
+
+	if (parserState->stackLen < 0) {
+		printf("popped one too many times\n");
+	}
+}
+
+RegexParserState getCurrentParserState(regex_parser_state *parserState)
+{
+	if (parserState->stackLen <= 0) {
+		printf("invalid parser stack len\n");
+		return RegexParserState_Impossible;
+	}
+	return parserState->stateStack[parserState->stackLen - 1];
+}

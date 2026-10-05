@@ -6,6 +6,11 @@
 
 static memory_arena GlobalArena;
 static char metaCharacters[] = "dDsSwW";
+static int numTabsForStateMachine;
+
+void printStateMachine(regex_state_machine *stateMachine);
+regex_state_machine *parseRegex(my_string *pattern, regex_parser_state *parserState, int startingIndex);
+
 
 int strLen(const char *str)
 {
@@ -28,46 +33,71 @@ void printRegexNode(regex_node *regexNode) {
 		// printf("node is null\n");
 		return;
 	}
+	char tabs[256];
+
+	for (int i = 0; i < numTabsForStateMachine; ++i) {
+		tabs[i] = '\t';
+	}
 
 	if (regexNode->type == RegexType_RegularChar) {
 		printf(
-			"REGEX NODE: {type: %d, comparisonChar: %c, minMatches: %d, maxMatches: %d, numMatches: %d, isGreedy: %d, hasLengthSpecified: %d} \n",
-			(int)regexNode->type, regexNode->comparisonChar, (int)regexNode->minMatches, (int)regexNode->maxMatches, (int)regexNode->numMatches, (int)regexNode->isGreedy, (int)regexNode->hasLengthSpecified
+			"%sREGEX NODE: {type: %d, comparisonChar: %c, minMatches: %d, maxMatches: %d, numMatches: %d, isGreedy: %d, hasLengthSpecified: %d} \n",
+			tabs, (int)regexNode->type, regexNode->comparisonChar, (int)regexNode->minMatches, (int)regexNode->maxMatches, (int)regexNode->numMatches, (int)regexNode->isGreedy, (int)regexNode->hasLengthSpecified
 		);
 	}
 
 	if (regexNode->type == RegexType_CharClass) {
 		printf(
-			"REGEX NODE: {type: %d, isNegativeClass: %d, numIntervals: %d, minMatches: %d, maxMatches: %d, numMatches: %d, isGreedy: %d, hasLengthSpecified: %d} \n",
-			(int)regexNode->type, (int)regexNode->isNegativeClass, (int)regexNode->numIntervals, (int)regexNode->minMatches, (int)regexNode->maxMatches, (int)regexNode->numMatches, (int)regexNode->isGreedy, (int)regexNode->hasLengthSpecified
+			"%sREGEX NODE: {type: %d, isNegativeClass: %d, numIntervals: %d, minMatches: %d, maxMatches: %d, numMatches: %d, isGreedy: %d, hasLengthSpecified: %d} \n",
+			tabs, (int)regexNode->type, (int)regexNode->isNegativeClass, (int)regexNode->numIntervals, (int)regexNode->minMatches, (int)regexNode->maxMatches, (int)regexNode->numMatches, (int)regexNode->isGreedy, (int)regexNode->hasLengthSpecified
 		);
 
 		for (int i = 0; i < regexNode->numIntervals; ++i) {
 			interval *rangeInterval = &regexNode->characterRangeIntervals[i];
-			printf("[%c, %c] (= [%d, %d])\n", (char)rangeInterval->min, (char)rangeInterval->max, rangeInterval->min, rangeInterval->max);
+			printf("%s[%c, %c] (= [%d, %d])\n", tabs, (char)rangeInterval->min, (char)rangeInterval->max, rangeInterval->min, rangeInterval->max);
 		}
 
 		for (int i = 0; i < regexNode->numMetaChars; ++i) {
-			printf("Meta char: %c\n", regexNode->metaChars[i]);
+			printf("%sMeta char: %c\n", tabs, regexNode->metaChars[i]);
 		}
 	}
 
 	if (regexNode->type == RegexType_MetaChar) {
 		printf(
-			"REGEX NODE: {type: %d, comparisonChar: %c, minMatches: %d, maxMatches: %d, numMatches: %d, isGreedy: %d, hasLengthSpecified: %d} \n",
-			(int)regexNode->type, regexNode->comparisonChar, (int)regexNode->minMatches, (int)regexNode->maxMatches, (int)regexNode->numMatches, (int)regexNode->isGreedy, (int)regexNode->hasLengthSpecified
+			"%sREGEX NODE: {type: %d, comparisonChar: %c, minMatches: %d, maxMatches: %d, numMatches: %d, isGreedy: %d, hasLengthSpecified: %d} \n",
+			tabs, (int)regexNode->type, regexNode->comparisonChar, (int)regexNode->minMatches, (int)regexNode->maxMatches, (int)regexNode->numMatches, (int)regexNode->isGreedy, (int)regexNode->hasLengthSpecified
 		);
+	}
+
+	if (regexNode->type == RegexType_Group) {
+		printf(
+			"%sREGEX NODE: {type: %d, comparisonChar: %c, minMatches: %d, maxMatches: %d, numMatches: %d, isGreedy: %d, hasLengthSpecified: %d, numBranches: %d} \n",
+			tabs, (int)regexNode->type, regexNode->comparisonChar, (int)regexNode->minMatches, (int)regexNode->maxMatches, (int)regexNode->numMatches, (int)regexNode->isGreedy, (int)regexNode->hasLengthSpecified, (int)regexNode->numBranches
+		);
+
+		for (int i = 0; i < regexNode->numBranches; ++i) {
+			printf("%sbranch %d:\n", tabs, i);
+			++numTabsForStateMachine;
+			printStateMachine(regexNode->groupBranches + i);
+			--numTabsForStateMachine;
+		}
 	}
 }
 
 void printStateMachine(regex_state_machine *stateMachine) {
-	printf("-----------------State Machine Start-----------------\n\n");
-	printf("Original pattern: %s\n\n", stateMachine->originalPattern->cstr);
+	char tabs[256] = {};
+
+	for (int i = 0; i < numTabsForStateMachine; ++i) {
+		tabs[i] = '\t';
+	}
+	tabs[numTabsForStateMachine + 1] = 0;
+	printf("%s-----------------State Machine Start-----------------\n\n", tabs);
+	printf("%sOriginal pattern: %s\n\n", tabs, stateMachine->originalPattern->cstr);
 
 	for (uint32_t i = 0; i < stateMachine->numNodes; ++i) {
 		printRegexNode(&stateMachine->regexNodes[i]);
 	}
-	printf("\n-----------------State Machine End-------------------\n\n");
+	printf("\n%s-----------------State Machine End-------------------\n\n", tabs);
 }
 
 parse_custom_length_result parseCustomLength(my_string *pattern, int openingBracketIndex) {
@@ -452,7 +482,46 @@ parse_custom_length_result parseLengthQuantifier(my_string *pattern, int index, 
 	return parseResult;
 }
 
-regex_state_machine *parseRegex(my_string *pattern)
+parse_group_result parseGroup(my_string *pattern, int startingIndex, regex_parser_state *parserState)
+{
+	parse_group_result result = {};
+
+	if (!doesCharAtIndexMatchTestChar(pattern, startingIndex, '(')) {
+		return result;
+	}
+	pushState(parserState, RegexParserState_Group);
+	int currentIndexInPattern = startingIndex + 1;
+	result.groupBranches = PushArray(&GlobalArena, 256, regex_state_machine);
+
+	while (true) {
+		regex_state_machine *groupBranch = parseRegex(pattern, parserState, currentIndexInPattern);
+
+		if (groupBranch->hasError) {
+			result.hasError = true;
+			printf("error while parsing group branch\n");
+			break;
+		}
+		char currentChar = charAt(pattern, parserState->currentIndex);
+
+		if (currentChar == '|' || currentChar == ')') {
+			result.groupBranches[result.numBranches++] = *groupBranch;
+			currentIndexInPattern = parserState->currentIndex + 1;
+
+			if (currentChar == ')') {
+				break;
+			}
+		} else {
+			result.hasError = true;
+			printf("string finished without ending the group\n");
+			break;
+		}
+	}
+	popState(parserState);
+	result.charsConsumed = currentIndexInPattern - startingIndex;
+	return result;
+}
+
+regex_state_machine *parseRegex(my_string *pattern, regex_parser_state *parserState, int startingIndex)
 {
 	regex_state_machine *errorMachine = PushStruct(&GlobalArena, regex_state_machine);
 	errorMachine->hasError = true;
@@ -462,13 +531,41 @@ regex_state_machine *parseRegex(my_string *pattern)
 	stateMachine->regexNodes = PushArray(&GlobalArena, 256, regex_node);
 
 
-	for (int i = 0; i < pattern->length;) {
+	for (int i = startingIndex; i < pattern->length;) {
+		parserState->currentIndex = i;
 		regex_node node;
 		regex_node *previousNode = stateMachine->numNodes == 0 ? NULL : &stateMachine->regexNodes[stateMachine->numNodes - 1];
 
 		char currentChar = charAt(pattern, i);
-		// todo: +/-ive lookahead/backs
-		// todo: groups :skull:
+
+		if (getCurrentParserState(parserState) == RegexParserState_Group) {
+			if (currentChar == '|' || currentChar == ')') {
+				if (i == startingIndex) {
+					printf("empty group case\n");
+					return errorMachine;
+				}
+				return stateMachine;
+			}
+		}
+
+		parse_group_result groupResult = parseGroup(pattern, i, parserState);
+
+		if (groupResult.hasError) {
+			return errorMachine;
+		}
+
+		if (groupResult.charsConsumed > 0) {
+			node = regex_node{
+				.type = RegexType_Group, 
+				.numBranches = groupResult.numBranches,
+				.groupBranches = groupResult.groupBranches,
+				.minMatches = 1,
+				.maxMatches = 1,
+			};
+			addNodeToStateMachine(&node, stateMachine);
+			i += groupResult.charsConsumed;
+			continue;
+		}
 
 		parse_custom_length_result lengthResult = parseLengthQuantifier(pattern, i, stateMachine);
 
@@ -544,6 +641,11 @@ regex_state_machine *parseRegex(my_string *pattern)
 	return stateMachine;
 }
 
+regex_state_machine *parseRegex(my_string *pattern, regex_parser_state *parserState)
+{
+	return parseRegex(pattern, parserState, 0);
+}
+
 inline bool matchWildcard(char testChar)
 {
 	return testChar != '\n';
@@ -593,6 +695,7 @@ inline bool matchMetaChar(char metaChar, char testChar)
 
 match_result doesNodeMatch(regex_node *regexNode, char *testString) {
 	match_result result = {};
+	bool matched = false;
 
 	if (*testString == 0) { // todo: this should be binary-safe
 		return result;
@@ -601,7 +704,7 @@ match_result doesNodeMatch(regex_node *regexNode, char *testString) {
 
 	if (regexNode->type == RegexType_RegularChar) {
 		if (currentChar == regexNode->comparisonChar) {
-			result.matched = true;
+			matched = true;
 		}
 	}
 
@@ -621,11 +724,19 @@ match_result doesNodeMatch(regex_node *regexNode, char *testString) {
 			matchedInterval = matchMetaChar(metaChar, currentChar);
 		}
 		// if it is negative, we want it to match 0 intervals. otherwise, even one match is good
-		result.matched = regexNode->isNegativeClass ? !matchedInterval : matchedInterval;
+		matched = regexNode->isNegativeClass ? !matchedInterval : matchedInterval;
 	}
 
 	if (regexNode->type == RegexType_MetaChar) {
-		result.matched = matchMetaChar(regexNode->comparisonChar, testString[0]);
+		matched = matchMetaChar(regexNode->comparisonChar, testString[0]);
+	}
+
+	if (matched) {
+		++result.numCharsMatched;
+	}
+
+	if (regexNode->type == RegexType_Group) {
+		printf("groups support incoming\n");
 	}
 	return result;
 }
@@ -661,7 +772,8 @@ bool nodeMatches(regex_node *regexNode, state_machine_partial *currentUniverseMa
 	if (currentUniverseMatch->matchEnd >= testString->length) {
 		return false;
 	}
-	return doesNodeMatch(regexNode, testString->cstr + currentUniverseMatch->matchEnd).matched;
+	match_result match = doesNodeMatch(regexNode, testString->cstr + currentUniverseMatch->matchEnd);
+	return match.numCharsMatched > 0;
 }
 
 void printStateMachinePartial(state_machine_partial *currentUniverseMatch)
@@ -788,7 +900,7 @@ void processString(my_string *testString, regex_state_machine *stateMachine)
 			// printRegexNode(currentNode);
 			// printRegexNode(previousNode);
 
-			if (!matchResult.matched) {
+			if (matchResult.numCharsMatched == 0) {
 				if (areLengthNodeMatchesInRange(currentNode)) {
 					if (currentNode->numMatches > 0) {
 						previousNode = currentNode; // if a node matches with 0, we don't need to backtrack by 1
@@ -874,8 +986,9 @@ int main(void)
 	// char pattern[] = "[\\^\\d]+";
 	// char pattern[] = "[\\^\\D]+";
 	// char pattern[] = "\\.*c";
-	char pattern[] = "a*[a-z]{0,100}a";
+	// char pattern[] = "a*[a-z]{0,100}a";
 	// char pattern[] = ".*.*";
+	char pattern[] = "ab(cd|(gg|[a-z]+)){1, 100}";
 	char searchLines[][100] = {
 		"abcde",
 		"ab",
@@ -889,8 +1002,16 @@ int main(void)
 		// "a\nb"
 	};
 	int numLines = sizeof(searchLines) / sizeof(*searchLines);
+
 	my_string patternString = fromCString(&GlobalArena, pattern, strLen(pattern));
-	regex_state_machine *stateMachine = parseRegex(&patternString);
+	regex_parser_state *parserState = PushStruct(&GlobalArena, regex_parser_state);
+	pushState(parserState, RegexParserState_Normal);
+
+	regex_state_machine *stateMachine = parseRegex(&patternString, parserState);
+
+	if (parserState->stackLen > 1) {
+		printf("ERROR: parser ended in state: %d\n", (int)parserState->stateStack[parserState->stackLen - 1]);
+	}
 
 	for (int i = 0; i < numLines; ++i) {
 		my_string testString = fromCString(&GlobalArena, searchLines[i], strLen(searchLines[i]));
@@ -901,9 +1022,9 @@ int main(void)
 
 			if (!match.matched || match.matchEnd == j) {
 				++j;
-				continue;
+			} else {
+				j = match.matchEnd;
 			}
-			j = match.matchEnd;
 		}
 		// processString(&testString, stateMachine);
 	}
