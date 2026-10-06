@@ -763,10 +763,6 @@ void resetStateMachine(regex_state_machine *stateMachine) {
 	}
 }
 
-void moveToNextNode(state_machine_partial *currentUniverseMatch) {
-	currentUniverseMatch->numMatchesForCurrentNode = 0;
-}
-
 bool nodeMatches(regex_node *regexNode, state_machine_partial *currentUniverseMatch, my_string *testString)
 {
 	if (currentUniverseMatch->matchEnd >= testString->length) {
@@ -778,11 +774,17 @@ bool nodeMatches(regex_node *regexNode, state_machine_partial *currentUniverseMa
 
 void printStateMachinePartial(state_machine_partial *currentUniverseMatch)
 {
-	printf("matchStart: %d, matchEnd: %d, numMatchesForCurrentNode: %d\n", 
+	printf(
+		"{matchStart: %d, matchEnd: %d, numMatchesForCurrentNode: %d}\n", 
 		(int)currentUniverseMatch->matchStart,
 		(int)currentUniverseMatch->matchEnd,
 		(int)currentUniverseMatch->numMatchesForCurrentNode
 	);
+}
+
+bool areMatchesInRange(regex_node *regexNode, int numMatches)
+{
+	return regexNode->minMatches <= numMatches && ((regexNode->maxMatches == 0) || numMatches <= regexNode->maxMatches);
 }
 
 state_machine_match matchStringToStateMachine(regex_state_machine *stateMachine, uint32_t startingNode, my_string *testString, int matchStart)
@@ -798,15 +800,14 @@ state_machine_match matchStringToStateMachine(regex_state_machine *stateMachine,
 	// for super large test strings / pathological regexes, this should be a dynamic arr?
 	// but we don't care about that right now
 	size_t arenaOffset = GlobalArena.currentOffset;
-	size_t maxAlternateStates = testString->length;
+	size_t maxAlternateStates = testString->length + 1; // for nodes that can match 0 times
 	state_machine_partial *alternateUniverses = PushArray(&GlobalArena, maxAlternateStates, state_machine_partial);
-	state_machine_match *matches = PushArray(&GlobalArena, maxAlternateStates, state_machine_match);
 	int numValidStates = 0;
+
 
 	state_machine_partial greedyPartial = {};
 	greedyPartial.matchStart = matchStart;
 	greedyPartial.matchEnd = matchStart;
-	greedyPartial.numMatchesForCurrentNode = 0;
 
 	while (true) {
 		if (currentNode->maxMatches > 0 && greedyPartial.numMatchesForCurrentNode == currentNode->maxMatches) {
@@ -828,13 +829,15 @@ state_machine_match matchStringToStateMachine(regex_state_machine *stateMachine,
 		minMatches = maxMatches;
 	}
 
-	for (int i = minMatches; i <= maxMatches; ++i) {
+	// emulate backtracking by going from the greediest match to the least greedy one
+	for (int i = maxMatches; i >= minMatches; --i) {
 		// printf("here. i: %d\n", i);
 		state_machine_partial partial = {};
 		partial.matchStart = matchStart;
 		partial.matchEnd = matchStart + i;
+		partial.numMatchesForCurrentNode = 0;
 
-		if (currentNode->minMatches <= i && ((currentNode->maxMatches == 0) || i <= currentNode->maxMatches)) {
+		if (areMatchesInRange(currentNode, i)) {
 			// printf("adding partial\n");
 			alternateUniverses[numValidStates++] = partial;
 		}
@@ -845,27 +848,23 @@ state_machine_match matchStringToStateMachine(regex_state_machine *stateMachine,
 		return state_machine_match{};
 	}
 	state_machine_match noMatch = {};
-	state_machine_match *longestMatch = &noMatch;
+	state_machine_match *finalMatch = &noMatch;
 
 	for (int i = 0; i < numValidStates; ++i) {
 		state_machine_partial *currentPartial = alternateUniverses + i;
 		state_machine_match match = matchStringToStateMachine(stateMachine, startingNode + 1, testString, currentPartial->matchEnd);
 
 		if (match.matched) {
-			state_machine_match *currentMatch = matches + i;
-			currentMatch->matchStart = matchStart;
-			currentMatch->matchEnd = match.matchEnd;
-			currentMatch->matched = true;
-
-			if (currentMatch->matchEnd - currentMatch->matchStart > longestMatch->matchEnd - longestMatch->matchStart) {
-				longestMatch = currentMatch;
-			}
+			finalMatch->matchStart = matchStart;
+			finalMatch->matchEnd = match.matchEnd;
+			finalMatch->matched = true;
+			break; // greediest / first match preferred
 		}
 	}
 	state_machine_match result = {};
 
-	if (longestMatch->matched) {
-		result = state_machine_match{true, longestMatch->matchStart, longestMatch->matchEnd};
+	if (finalMatch->matched) {
+		result = state_machine_match{true, finalMatch->matchStart, finalMatch->matchEnd};
 	}
 	GlobalArena.currentOffset = arenaOffset; // give back temp memory
 	return result;
@@ -966,7 +965,7 @@ void processString(my_string *testString, regex_state_machine *stateMachine)
 
 int main(void)
 {
-	uint32_t bufferSize = (uint32_t)Megabytes(20);
+	uint32_t bufferSize = (uint32_t)Megabytes(2000);
 	uint8_t *backingMemory = new uint8_t[bufferSize];
 	initializeArena(&GlobalArena, bufferSize, backingMemory);
 
@@ -986,9 +985,9 @@ int main(void)
 	// char pattern[] = "[\\^\\d]+";
 	// char pattern[] = "[\\^\\D]+";
 	// char pattern[] = "\\.*c";
-	// char pattern[] = "a*[a-z]{0,100}a";
+	char pattern[] = "a*[a-z]{0,100}a";
 	// char pattern[] = ".*.*";
-	char pattern[] = "ab(cd|(gg|[a-z]+)){1, 100}";
+	// char pattern[] = "ab(cd|(gg|[a-z]+)){1, 100}";
 	char searchLines[][100] = {
 		"abcde",
 		"ab",
