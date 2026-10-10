@@ -10,10 +10,11 @@ static int numTabsForStateMachine;
 
 void printStateMachine(regex_state_machine *stateMachine);
 regex_state_machine *parseRegex(my_string *pattern, regex_parser_state *parserState, int startingIndex);
+void printStateMachinePartial(state_machine_partial *currentUniverseMatch);
+state_machine_match matchStringToStateMachine(regex_state_machine *stateMachine, uint32_t startingNode, my_string *testString, int matchStart);
 
 
-int strLen(const char *str)
-{
+int strLen(const char *str) {
 	int length = 0;
 
 	while (*str) {
@@ -41,15 +42,15 @@ void printRegexNode(regex_node *regexNode) {
 
 	if (regexNode->type == RegexType_RegularChar) {
 		printf(
-			"%sREGEX NODE: {type: %d, comparisonChar: %c, minMatches: %d, maxMatches: %d, numMatches: %d, isGreedy: %d, hasLengthSpecified: %d} \n",
-			tabs, (int)regexNode->type, regexNode->comparisonChar, (int)regexNode->minMatches, (int)regexNode->maxMatches, (int)regexNode->numMatches, (int)regexNode->isGreedy, (int)regexNode->hasLengthSpecified
+			"%sREGEX NODE: {type: %d, comparisonChar: %c, minMatches: %d, maxMatches: %d, isGreedy: %d, hasLengthSpecified: %d} \n",
+			tabs, (int)regexNode->type, regexNode->comparisonChar, (int)regexNode->minMatches, (int)regexNode->maxMatches, (int)regexNode->isGreedy, (int)regexNode->hasLengthSpecified
 		);
 	}
 
 	if (regexNode->type == RegexType_CharClass) {
 		printf(
-			"%sREGEX NODE: {type: %d, isNegativeClass: %d, numIntervals: %d, minMatches: %d, maxMatches: %d, numMatches: %d, isGreedy: %d, hasLengthSpecified: %d} \n",
-			tabs, (int)regexNode->type, (int)regexNode->isNegativeClass, (int)regexNode->numIntervals, (int)regexNode->minMatches, (int)regexNode->maxMatches, (int)regexNode->numMatches, (int)regexNode->isGreedy, (int)regexNode->hasLengthSpecified
+			"%sREGEX NODE: {type: %d, isNegativeClass: %d, numIntervals: %d, minMatches: %d, maxMatches: %d, isGreedy: %d, hasLengthSpecified: %d} \n",
+			tabs, (int)regexNode->type, (int)regexNode->isNegativeClass, (int)regexNode->numIntervals, (int)regexNode->minMatches, (int)regexNode->maxMatches, (int)regexNode->isGreedy, (int)regexNode->hasLengthSpecified
 		);
 
 		for (int i = 0; i < regexNode->numIntervals; ++i) {
@@ -64,15 +65,15 @@ void printRegexNode(regex_node *regexNode) {
 
 	if (regexNode->type == RegexType_MetaChar) {
 		printf(
-			"%sREGEX NODE: {type: %d, comparisonChar: %c, minMatches: %d, maxMatches: %d, numMatches: %d, isGreedy: %d, hasLengthSpecified: %d} \n",
-			tabs, (int)regexNode->type, regexNode->comparisonChar, (int)regexNode->minMatches, (int)regexNode->maxMatches, (int)regexNode->numMatches, (int)regexNode->isGreedy, (int)regexNode->hasLengthSpecified
+			"%sREGEX NODE: {type: %d, comparisonChar: %c, minMatches: %d, maxMatches: %d, isGreedy: %d, hasLengthSpecified: %d} \n",
+			tabs, (int)regexNode->type, regexNode->comparisonChar, (int)regexNode->minMatches, (int)regexNode->maxMatches, (int)regexNode->isGreedy, (int)regexNode->hasLengthSpecified
 		);
 	}
 
 	if (regexNode->type == RegexType_Group) {
 		printf(
-			"%sREGEX NODE: {type: %d, comparisonChar: %c, minMatches: %d, maxMatches: %d, numMatches: %d, isGreedy: %d, hasLengthSpecified: %d, numBranches: %d} \n",
-			tabs, (int)regexNode->type, regexNode->comparisonChar, (int)regexNode->minMatches, (int)regexNode->maxMatches, (int)regexNode->numMatches, (int)regexNode->isGreedy, (int)regexNode->hasLengthSpecified, (int)regexNode->numBranches
+			"%sREGEX NODE: {type: %d, comparisonChar: %c, minMatches: %d, maxMatches: %d, isGreedy: %d, hasLengthSpecified: %d, numBranches: %d} \n",
+			tabs, (int)regexNode->type, regexNode->comparisonChar, (int)regexNode->minMatches, (int)regexNode->maxMatches, (int)regexNode->isGreedy, (int)regexNode->hasLengthSpecified, (int)regexNode->numBranches
 		);
 
 		for (int i = 0; i < regexNode->numBranches; ++i) {
@@ -226,8 +227,7 @@ parse_custom_length_result parseCustomLength(my_string *pattern, int openingBrac
 	return result;
 }
 
-parse_token_result parseToken(my_string *pattern, int index, CharContext charContext)
-{
+parse_token_result parseToken(my_string *pattern, int index, CharContext charContext) {
 	const char *escapableCharacters;
 	parse_token_result result = {};
 
@@ -284,8 +284,7 @@ parse_token_result parseToken(my_string *pattern, int index, CharContext charCon
 	return result;
 }
 
-bool addCharacterClassRange(parse_character_class_result *result, three_char_stack *stack)
-{
+bool addCharacterClassRange(parse_character_class_result *result, three_char_stack *stack) {
 	// printf("i am call. hasLower: %d, lower: %d, hasRange: %d, upper: %d\n", (int)stack->hasLower, (int)stack->lower, (int)stack->hasRange, (int)stack->upper);
 
 	if (!stack->hasLower) {
@@ -321,8 +320,7 @@ bool addCharacterClassRange(parse_character_class_result *result, three_char_sta
 	return true;
 }
 
-parse_character_class_result parseCharacterClass(my_string *pattern, int index, regex_state_machine *stateMachine)
-{
+parse_character_class_result parseCharacterClass(my_string *pattern, int index, regex_state_machine *stateMachine) {
 	char currentChar = charAt(pattern, index);
 	parse_character_class_result resultWew = {};
 
@@ -447,8 +445,7 @@ parse_character_class_result parseCharacterClass(my_string *pattern, int index, 
 	return resultWew;
 }
 
-parse_custom_length_result parseLengthQuantifier(my_string *pattern, int index, regex_state_machine *stateMachine)
-{
+parse_custom_length_result parseLengthQuantifier(my_string *pattern, int index, regex_state_machine *stateMachine) {
 	char currentChar = charAt(pattern, index);
 	parse_custom_length_result parseResult = {};
 
@@ -482,8 +479,7 @@ parse_custom_length_result parseLengthQuantifier(my_string *pattern, int index, 
 	return parseResult;
 }
 
-parse_group_result parseGroup(my_string *pattern, int startingIndex, regex_parser_state *parserState)
-{
+parse_group_result parseGroup(my_string *pattern, int startingIndex, regex_parser_state *parserState) {
 	parse_group_result result = {};
 
 	if (!doesCharAtIndexMatchTestChar(pattern, startingIndex, '(')) {
@@ -521,8 +517,7 @@ parse_group_result parseGroup(my_string *pattern, int startingIndex, regex_parse
 	return result;
 }
 
-regex_state_machine *parseRegex(my_string *pattern, regex_parser_state *parserState, int startingIndex)
-{
+regex_state_machine *parseRegex(my_string *pattern, regex_parser_state *parserState, int startingIndex) {
 	regex_state_machine *errorMachine = PushStruct(&GlobalArena, regex_state_machine);
 	errorMachine->hasError = true;
 
@@ -641,28 +636,23 @@ regex_state_machine *parseRegex(my_string *pattern, regex_parser_state *parserSt
 	return stateMachine;
 }
 
-regex_state_machine *parseRegex(my_string *pattern, regex_parser_state *parserState)
-{
+regex_state_machine *parseRegex(my_string *pattern, regex_parser_state *parserState) {
 	return parseRegex(pattern, parserState, 0);
 }
 
-inline bool matchWildcard(char testChar)
-{
+inline bool matchWildcard(char testChar) {
 	return testChar != '\n';
 }
 
-inline bool matchDigit(char testChar)
-{
+inline bool matchDigit(char testChar) {
 	return '0' <= testChar && testChar <= '9';
 }
 
-inline bool matchWord(char testChar)
-{
+inline bool matchWord(char testChar) {
 	return ('a' <= testChar && testChar <= 'z') || ('A' <= testChar && testChar <= 'Z') || testChar == '_' || matchDigit(testChar);
 }
 
-inline bool matchSpace(char testChar)
-{
+inline bool matchSpace(char testChar) {
 	switch (testChar) {
 		case ' ':
 		case '\t':
@@ -675,8 +665,7 @@ inline bool matchSpace(char testChar)
 	}
 }
 
-inline bool matchMetaChar(char metaChar, char testChar)
-{
+inline bool matchMetaChar(char metaChar, char testChar) {
     switch (metaChar) {
         case '.': return matchWildcard(testChar);
         case 'd': return matchDigit(testChar);
@@ -692,15 +681,20 @@ inline bool matchMetaChar(char metaChar, char testChar)
     }
 }
 
-
-match_result doesNodeMatch(regex_node *regexNode, char *testString) {
+match_result nodeMatches(regex_node *regexNode, state_machine_partial *currentUniverseMatch, my_string *testString) {
 	match_result result = {};
 	bool matched = false;
 
-	if (*testString == 0) { // todo: this should be binary-safe
+	// printf("trying to match node:\n");
+	// printRegexNode(regexNode);
+	// printf("against universe match: ");
+	// printStateMachinePartial(currentUniverseMatch);
+	// printf("for string: '%s'\n", testString->cstr);
+
+	if (currentUniverseMatch->matchEnd >= testString->length) { // todo: this should be binary-safe
 		return result;
 	}
-	char currentChar = testString[0];
+	char currentChar = testString->cstr[currentUniverseMatch->matchEnd];
 
 	if (regexNode->type == RegexType_RegularChar) {
 		if (currentChar == regexNode->comparisonChar) {
@@ -728,7 +722,7 @@ match_result doesNodeMatch(regex_node *regexNode, char *testString) {
 	}
 
 	if (regexNode->type == RegexType_MetaChar) {
-		matched = matchMetaChar(regexNode->comparisonChar, testString[0]);
+		matched = matchMetaChar(regexNode->comparisonChar, currentChar);
 	}
 
 	if (matched) {
@@ -736,60 +730,43 @@ match_result doesNodeMatch(regex_node *regexNode, char *testString) {
 	}
 
 	if (regexNode->type == RegexType_Group) {
-		printf("groups support incoming\n");
+		for (int i = 0; i < regexNode->numBranches; ++i) {
+			state_machine_match match = matchStringToStateMachine(
+				regexNode->groupBranches + i,
+				0,
+				testString,
+				currentUniverseMatch->matchEnd
+			);
+
+			if (match.matched) {
+				result.numCharsMatched = match.matchEnd - match.matchStart;
+				return result;
+			}
+		}
 	}
 	return result;
 }
 
-bool areLengthNodeMatchesInRange(regex_node *regexNode) {
-	return (regexNode->minMatches <= regexNode->numMatches) && 
-	(
-		regexNode->maxMatches == 0 || (regexNode->numMatches <= regexNode->maxMatches)
-	);
-}
-
-bool areLengthNodeMatchesMaxedOut(regex_node *regexNode) {
-	return regexNode->numMatches > 0 && regexNode->numMatches == regexNode->maxMatches;
-}
-
-bool canNodeBeBacktracked(regex_node *regexNode) {
-	// printRegexNode(regexNode);
-	return regexNode && !regexNode->isGreedy && (regexNode->numMatches > regexNode->minMatches);
-}
-
-void resetStateMachine(regex_state_machine *stateMachine) {
-	for (uint32_t i = 0; i < stateMachine->numNodes; ++i) {
-		stateMachine->regexNodes[i].numMatches = 0;
-	}
-}
-
-bool nodeMatches(regex_node *regexNode, state_machine_partial *currentUniverseMatch, my_string *testString)
-{
-	if (currentUniverseMatch->matchEnd >= testString->length) {
-		return false;
-	}
-	match_result match = doesNodeMatch(regexNode, testString->cstr + currentUniverseMatch->matchEnd);
-	return match.numCharsMatched > 0;
-}
-
-void printStateMachinePartial(state_machine_partial *currentUniverseMatch)
-{
+void printStateMachinePartial(state_machine_partial *currentUniverseMatch) {
 	printf(
-		"{matchStart: %d, matchEnd: %d, numMatchesForCurrentNode: %d}\n", 
+		"{matchStart: %d, matchEnd: %d, currentNodeIndex: %d, numMatchesForCurrentNode: %d, stopRecursion: %d}\n", 
 		(int)currentUniverseMatch->matchStart,
 		(int)currentUniverseMatch->matchEnd,
-		(int)currentUniverseMatch->numMatchesForCurrentNode
+		(int)currentUniverseMatch->currentNodeIndex,
+		(int)currentUniverseMatch->numMatchesForCurrentNode,
+		(int)currentUniverseMatch->stopRecursion
 	);
 }
 
-bool areMatchesInRange(regex_node *regexNode, int numMatches)
-{
+bool areMatchesInRange(regex_node *regexNode, int numMatches) {
 	return regexNode->minMatches <= numMatches && ((regexNode->maxMatches == 0) || numMatches <= regexNode->maxMatches);
 }
 
-state_machine_match matchStringToStateMachine(regex_state_machine *stateMachine, uint32_t startingNode, my_string *testString, int matchStart)
-{
-	// todo: handle greedy nodes (e.g. a*+)
+bool areMatchesMaxedOut(regex_node *regexNode, int numMatches) {
+	return ((regexNode->maxMatches > 0) && (numMatches == regexNode->maxMatches));
+}
+
+state_machine_match matchStringToStateMachine(regex_state_machine *stateMachine, uint32_t startingNode, my_string *testString, int matchStart) {
 	if (startingNode == stateMachine->numNodes) {
 		// printf("hehehehe\n");
 		return state_machine_match{true, matchStart, matchStart};
@@ -800,78 +777,74 @@ state_machine_match matchStringToStateMachine(regex_state_machine *stateMachine,
 	// for super large test strings / pathological regexes, this should be a dynamic arr?
 	// but we don't care about that right now
 	size_t arenaOffset = GlobalArena.currentOffset;
-	size_t maxAlternateStates = testString->length + 1; // for nodes that can match 0 times
+	size_t maxAlternateStates = stateMachine->numNodes * (testString->length + 1); // +1 for nodes that can match 0 times
 	state_machine_partial *alternateUniverses = PushArray(&GlobalArena, maxAlternateStates, state_machine_partial);
 	int numValidStates = 0;
 
+	alternateUniverses[numValidStates++] = state_machine_partial{
+		.matchStart = matchStart,
+		.matchEnd = matchStart,
+		.currentNodeIndex = (int)startingNode,
+	};
 
-	state_machine_partial greedyPartial = {};
-	greedyPartial.matchStart = matchStart;
-	greedyPartial.matchEnd = matchStart;
+	while (numValidStates > 0) {
+		state_machine_partial *latestState = alternateUniverses + (numValidStates - 1);
 
-	while (true) {
-		if (currentNode->maxMatches > 0 && greedyPartial.numMatchesForCurrentNode == currentNode->maxMatches) {
-			break;
+		if (latestState->currentNodeIndex == stateMachine->numNodes) {
+			matchSuccessful:
+			GlobalArena.currentOffset = arenaOffset; // give back temp memory
+			return state_machine_match{true, latestState->matchStart, latestState->matchEnd};
 		}
+		regex_node *currentNode = stateMachine->regexNodes + latestState->currentNodeIndex;
+		// printf("numValidStates: %d, latestState: ", numValidStates);
+		// printStateMachinePartial(latestState);
+		// printRegexNode(currentNode);
 
-		if (nodeMatches(currentNode, &greedyPartial, testString)) {
-			++greedyPartial.matchEnd;
-			++greedyPartial.numMatchesForCurrentNode;
+		if (latestState->stopRecursion || areMatchesMaxedOut(currentNode, latestState->numMatchesForCurrentNode)) {
+			state_machine_partial newState = state_machine_partial{
+				.matchStart = matchStart,
+				.matchEnd = latestState->matchEnd,
+				.currentNodeIndex = latestState->currentNodeIndex + 1,
+			};
+			*latestState = newState;
 			continue;
 		}
-		break;
-	}
-	// printf("num matches: %d\n", greedyPartial.numMatchesForCurrentNode);
-	int minMatches = currentNode->minMatches;
-	int maxMatches = (currentNode->maxMatches > 0) ? min(greedyPartial.numMatchesForCurrentNode, currentNode->maxMatches) : greedyPartial.numMatchesForCurrentNode;
+		bool matchesInRange = areMatchesInRange(currentNode, latestState->numMatchesForCurrentNode);
+		match_result currentNodeMatch = nodeMatches(currentNode, latestState, testString);
 
-	if (currentNode->isGreedy) {
-		minMatches = maxMatches;
-	}
+		// printf("node matched chars: %d\n", (int)currentNodeMatch.numCharsMatched);
 
-	// emulate backtracking by going from the greediest match to the least greedy one
-	for (int i = maxMatches; i >= minMatches; --i) {
-		// printf("here. i: %d\n", i);
-		state_machine_partial partial = {};
-		partial.matchStart = matchStart;
-		partial.matchEnd = matchStart + i;
-		partial.numMatchesForCurrentNode = 0;
+		if (!matchesInRange) {
+			if (currentNodeMatch.numCharsMatched > 0) {
+				latestState->matchEnd += currentNodeMatch.numCharsMatched;
+				++latestState->numMatchesForCurrentNode;
+			} else {
+				--numValidStates; // not in range and match failed, so this is a dead end
+			}
+		} else {
+			latestState->stopRecursion = true;
 
-		if (areMatchesInRange(currentNode, i)) {
-			// printf("adding partial\n");
-			alternateUniverses[numValidStates++] = partial;
+			if (currentNodeMatch.numCharsMatched > 0) {
+				state_machine_partial newState = state_machine_partial{
+					.matchStart = matchStart,
+					.matchEnd = latestState->matchEnd + (int)currentNodeMatch.numCharsMatched,
+					.currentNodeIndex = (int)latestState->currentNodeIndex,
+					.numMatchesForCurrentNode = latestState->numMatchesForCurrentNode + 1,
+				};
+
+				if (currentNode->isGreedy) { // discard any matches that aren't maxed out
+					*latestState = newState;
+				} else {
+					alternateUniverses[numValidStates++] = newState;
+				}
+			}
 		}
-	}
-
-	if (numValidStates == 0) {
-		GlobalArena.currentOffset = arenaOffset; // give back temp memory
-		return state_machine_match{};
-	}
-	state_machine_match noMatch = {};
-	state_machine_match *finalMatch = &noMatch;
-
-	for (int i = 0; i < numValidStates; ++i) {
-		state_machine_partial *currentPartial = alternateUniverses + i;
-		state_machine_match match = matchStringToStateMachine(stateMachine, startingNode + 1, testString, currentPartial->matchEnd);
-
-		if (match.matched) {
-			finalMatch->matchStart = matchStart;
-			finalMatch->matchEnd = match.matchEnd;
-			finalMatch->matched = true;
-			break; // greediest / first match preferred
-		}
-	}
-	state_machine_match result = {};
-
-	if (finalMatch->matched) {
-		result = state_machine_match{true, finalMatch->matchStart, finalMatch->matchEnd};
 	}
 	GlobalArena.currentOffset = arenaOffset; // give back temp memory
-	return result;
+	return state_machine_match{};
 }
 
-state_machine_match processString2(my_string *testString, int matchStart, regex_state_machine *stateMachine)
-{
+state_machine_match processString(my_string *testString, int matchStart, regex_state_machine *stateMachine) {
 	state_machine_match result = matchStringToStateMachine(stateMachine, 0, testString, matchStart);
 
 	if (result.matched) {
@@ -880,91 +853,7 @@ state_machine_match processString2(my_string *testString, int matchStart, regex_
 	return result;
 }
 
-void processString(my_string *testString, regex_state_machine *stateMachine)
-{
-	if (stateMachine->numNodes == 0) {
-		return;
-	}
-	int matchStart = 0;
-	int matchEnd = matchStart;
-	char *testStringRef = testString->cstr + matchStart;
-
-	while (*testStringRef) {
-		bool matchedAllNodes = true;
-		regex_node *previousNode = 0;
-
-		for (uint32_t i = 0; i < stateMachine->numNodes && matchedAllNodes; ++i) {
-			regex_node *currentNode = &stateMachine->regexNodes[i];
-			match_result matchResult = doesNodeMatch(currentNode, testStringRef);
-			// printRegexNode(currentNode);
-			// printRegexNode(previousNode);
-
-			if (matchResult.numCharsMatched == 0) {
-				if (areLengthNodeMatchesInRange(currentNode)) {
-					if (currentNode->numMatches > 0) {
-						previousNode = currentNode; // if a node matches with 0, we don't need to backtrack by 1
-					}
-					continue; // move to the next node
-				} else if (canNodeBeBacktracked(previousNode)) {
-					// printf("backtracking:\n");
-					// printf("back tracking node: \n");
-					// printRegexNode(previousNode);
-					// printRegexNode(currentNode);
-					// trying to backtrack the previous node
-					--matchEnd;
-					--testStringRef;
-					--previousNode->numMatches;
-					--i;
-
-					// continue the backtracking to the previous node
-					if (previousNode->numMatches == 0 && previousNode != stateMachine->regexNodes) {
-						--previousNode;
-					}
-					continue;
-				}
-				matchedAllNodes = false;
-				++matchStart; // move starting index ahead
-				// reset ref and end index
-				testStringRef = testString->cstr + matchStart;
-				matchEnd = matchStart;
-			} else {
-				// move end index and ref ahead
-				++matchEnd;
-				++testStringRef;
-				++currentNode->numMatches;
-			}
-			// printRegexNode(currentNode);
-			// printf("string: '%s' / '%s'\n", testStringRef, testString);
-
-			if (areLengthNodeMatchesMaxedOut(currentNode)) { // greedy
-				// printf("node maxed out, moving ahead\n");
-				previousNode = currentNode;
-				continue; // move to the next node
-			} else { // need to at least replay node till matches are in range. if ungreedy, it would be !areLengthNodeMatchesInRange
-				// printf("replaying node\n");
-				--i; // replay current node
-			}
-		}
-
-		if (matchedAllNodes) {
-			printf("matched: '%s' from %d to %d. Leftover string: '%s'\n", testString->cstr, matchStart, matchEnd, testStringRef);
-
-			if (matchEnd > matchStart) {				
-				matchStart = matchEnd;
-			} else {
-				printf("vacuous(?) match, moving ahead by 1\n");
-				++matchStart;
-				matchEnd = matchStart;
-				++testStringRef;
-			}
-		}
-		matchedAllNodes = true;
-		resetStateMachine(stateMachine);
-	}
-}
-
-int main(void)
-{
+int main(void) {
 	uint32_t bufferSize = (uint32_t)Megabytes(2000);
 	uint8_t *backingMemory = new uint8_t[bufferSize];
 	initializeArena(&GlobalArena, bufferSize, backingMemory);
@@ -974,6 +863,7 @@ int main(void)
 	// char pattern[] = "[a-z]+";
 	// char pattern[] = "[]-a-z]+";
 	// char pattern[] = "[^a-c-f]++";
+	// char pattern[] = "[a-z]{0,100}a";
 	// char pattern[] = "[a-z]{0,100}+a";
 	// char pattern[] = ".*c";
 	// char pattern[] = "\\w+";
@@ -985,9 +875,9 @@ int main(void)
 	// char pattern[] = "[\\^\\d]+";
 	// char pattern[] = "[\\^\\D]+";
 	// char pattern[] = "\\.*c";
-	char pattern[] = "a*[a-z]{0,100}a";
+	// char pattern[] = "a*[a-z]{0,100}a";
 	// char pattern[] = ".*.*";
-	// char pattern[] = "ab(cd|(gg|[a-z]+)){1, 100}";
+	char pattern[] = "ab(cd|(gg|[a-z]+)){1, 100}";
 	char searchLines[][100] = {
 		"abcde",
 		"ab",
@@ -998,7 +888,7 @@ int main(void)
 		"[a-z]^",
 		"...c",
 		"a",
-		// "a\nb"
+		"a\nb"
 	};
 	int numLines = sizeof(searchLines) / sizeof(*searchLines);
 
@@ -1011,12 +901,13 @@ int main(void)
 	if (parserState->stackLen > 1) {
 		printf("ERROR: parser ended in state: %d\n", (int)parserState->stateStack[parserState->stackLen - 1]);
 	}
+	printf("pattern: '%s'\n\n", stateMachine->originalPattern->cstr);
 
 	for (int i = 0; i < numLines; ++i) {
 		my_string testString = fromCString(&GlobalArena, searchLines[i], strLen(searchLines[i]));
 
 		for (int j = 0; j < testString.length;) {
-			state_machine_match match = processString2(&testString, j, stateMachine);
+			state_machine_match match = processString(&testString, j, stateMachine);
 			// printf("string: '%s', j: %d, matched: %d, matchStart: %d, matchEnd: %d\n", testString.cstr, j, (int)match.matched, match.matchStart, match.matchEnd);
 
 			if (!match.matched || match.matchEnd == j) {

@@ -92,7 +92,6 @@ struct regex_node
 
 	uint32_t minMatches;
 	uint32_t maxMatches;
-	uint32_t numMatches;
 	bool isGreedy;
 	bool hasLengthSpecified;
 };
@@ -133,8 +132,9 @@ struct three_char_stack
 
 struct state_machine_partial
 {
-	int matchStart, matchEnd;
+	int matchStart, matchEnd, currentNodeIndex;
 	uint32_t numMatchesForCurrentNode;
+	bool stopRecursion;
 };
 
 struct state_machine_match
